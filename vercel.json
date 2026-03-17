@@ -1,27 +1,7 @@
 {
   "rewrites": [
     {
-      "source": "/rest/v1/:path*",
-      "destination": "https://aezbtbqqmeuynjkqdxjz.supabase.co/rest/v1/:path*"
-    },
-    {
-      "source": "/auth/v1/:path*",
-      "destination": "https://aezbtbqqmeuynjkqdxjz.supabase.co/auth/v1/:path*"
-    },
-    {
-      "source": "/storage/v1/:path*",
-      "destination": "https://aezbtbqqmeuynjkqdxjz.supabase.co/storage/v1/:path*"
-    },
-    {
-      "source": "/realtime/v1/:path*",
-      "destination": "https://aezbtbqqmeuynjkqdxjz.supabase.co/realtime/v1/:path*"
-    },
-    {
-      "source": "/functions/v1/:path*",
-      "destination": "https://aezbtbqqmeuynjkqdxjz.supabase.co/functions/v1/:path*"
-    },
-    {
-      "source": "/((?!rest/v1|auth/v1|storage/v1|realtime/v1|functions/v1|assets/).*)",
+      "source": "/(.*)",
       "destination": "/index.html"
     }
   ]

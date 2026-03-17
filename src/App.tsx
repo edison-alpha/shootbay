@@ -172,8 +172,21 @@ export default function App() {
     setActiveStorageUser(authUser?.id ?? null);
   }, [authUser]);
 
+  // Helper: detect if a profile needs onboarding (auto-created by OAuth, never set up).
+  // DB defaults character_id to 'agree', so checking characterId alone is not enough.
+  // Instead, check profilePhoto — it is null for auto-created profiles and only set
+  // after the user completes the in-app photo capture step during onboarding.
+  const needsOnboarding = useCallback(
+    (profile: { characterId?: string | null; profilePhoto?: string | null } | null | undefined): boolean =>
+      !profile || !profile.profilePhoto,
+    [],
+  );
+
   useEffect(() => {
-    if (!authChecked || !introReady || gameState !== 'intro') return;
+    if (!authChecked || !introReady) return;
+    // Only run routing logic from 'intro' (initial load / OAuth redirect)
+    // or 'login' (auth state changed while on login screen, e.g. popup flow)
+    if (gameState !== 'intro' && gameState !== 'login') return;
 
     if (authUser) {
       // Admin session: if user is admin and last state was adminDashboard, restore it
@@ -184,11 +197,7 @@ export default function App() {
         return;
       }
 
-      // Try loading from Supabase first
-      // Helper: detect if a profile needs onboarding (auto-created by OAuth, never set up)
-      const needsOnboarding = (profile: { characterId?: string | null } | null | undefined): boolean =>
-        !profile || !profile.characterId;
-
+      // Try loading from cache first for instant UX (returning users)
       const cachedData = loadGameData();
       if (cachedData.profile && !needsOnboarding(cachedData.profile)) {
         setPlayerName(cachedData.profile.name);
@@ -202,6 +211,7 @@ export default function App() {
         gameRef.current.state = resumeState;
       }
 
+      // Authoritative check from Supabase (may override cache if stale)
       loadGameDataFromSupabase(authUser.id)
         .then((supaData) => {
           const data = supaData;
@@ -218,7 +228,8 @@ export default function App() {
             setGameState(resumeState);
             gameRef.current.state = resumeState;
           } else {
-            // New user (no profile, or profile without characterId = onboarding not done)
+            // New user — profile auto-created by OAuth but onboarding not done.
+            // Force full onboarding: nameEntry → photoCapture → characterSelect → tutorial
             resetForFreshOnboarding();
             setPlayerName(authUser.displayName || authUser.username);
             setGameState('nameEntry');
@@ -237,7 +248,7 @@ export default function App() {
     setActiveStorageUser(null);
     setGameState('login');
     gameRef.current.state = 'login';
-  }, [authChecked, authUser, gameState, introReady, resetForFreshOnboarding]);
+  }, [authChecked, authUser, gameState, introReady, needsOnboarding, resetForFreshOnboarding]);
 
   const { loadingProgress, introFading } = useIntroLoader(gameState, gameRef, () => {
     setIntroReady(true);
