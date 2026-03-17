@@ -601,23 +601,21 @@ async function ensureProfileForAuthenticatedUser(
 }
 
 async function bootstrapFirstAdmin(userId: string): Promise<boolean> {
-  const rpc = (supabase as unknown as {
-    rpc: (
-      fn: string,
-      args?: Record<string, unknown>,
-    ) => Promise<{ data: unknown; error: { message: string } | null }>;
-  }).rpc;
+  try {
+    const { data, error } = await supabase.rpc('bootstrap_first_admin' as never, {
+      target_user_id: userId,
+    } as never);
 
-  const { data, error } = await rpc('bootstrap_first_admin', {
-    target_user_id: userId,
-  });
+    if (error) {
+      console.warn('Bootstrap first admin failed:', error.message);
+      return false;
+    }
 
-  if (error) {
-    console.warn('Bootstrap first admin failed:', error.message);
+    return Boolean(data);
+  } catch (err) {
+    console.warn('Bootstrap first admin exception:', err);
     return false;
   }
-
-  return Boolean(data);
 }
 
 async function signupAdmin(email: string, password: string): Promise<SignupResult> {

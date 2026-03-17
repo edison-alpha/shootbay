@@ -16,7 +16,6 @@ import { createInitialGameSnapshot, resetGameSnapshot } from './engine/entities'
 // ─── Store ──────────────────────────────────────────────────────────────────
 import {
   createDefaultGameData,
-  loadGameData,
   saveProfile,
   saveLevelProgress,
   addToLeaderboard,
@@ -30,6 +29,7 @@ import {
   setActiveStorageUser,
 } from './store/gameStore';
 import type { GameStoreData } from './store/gameStore';
+import { useGameStateStore } from './store/useGameStateStore';
 
 // ─── Custom Hooks ───────────────────────────────────────────────────────────
 import { useCamera } from './hooks/useCamera';
@@ -100,7 +100,8 @@ export default function App() {
   const [introReady, setIntroReady] = useState(false);
 
   // ── Persistent Store ──────────────────────────────────────────────
-  const [storeData, setStoreData] = useState<GameStoreData>(() => loadGameData());
+  const storeData = useGameStateStore((s) => s.storeData);
+  const setStoreData = useGameStateStore((s) => s.setStoreData);
 
   // ── State machine ────────────────────────────────────────────────────
   const [gameState, setGameState] = useState<GameState>('intro');
@@ -738,9 +739,9 @@ export default function App() {
       }, 150);
     };
 
-    // Fallback polling — 15s (reduced from 7s to save battery/network on mobile)
+    // Fallback polling — 45s (optimized for battery/network on mobile)
     // Realtime channel handles most updates; polling is just a safety net.
-    const POLL_INTERVAL_MS = 15000;
+    const POLL_INTERVAL_MS = 45000;
     const pollInterval = window.setInterval(() => {
       scheduleReload();
     }, POLL_INTERVAL_MS);

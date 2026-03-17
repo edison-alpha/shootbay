@@ -42,10 +42,11 @@ export const MainMenuScreen: React.FC<MainMenuScreenProps> = ({
   onChangeCharacter,
   onAdmin,
 }) => {
-  const totalStars = getTotalStars(storeData);
-  const maxStars = getMaxStars();
-  const completedLevels = getCompletedLevels(storeData);
-  const ticketProgress = getTicketProgress(storeData);
+  // Memoize expensive calculations to prevent re-computation on every render
+  const totalStars = React.useMemo(() => getTotalStars(storeData), [storeData]);
+  const maxStars = React.useMemo(() => getMaxStars(), []);
+  const completedLevels = React.useMemo(() => getCompletedLevels(storeData), [storeData]);
+  const ticketProgress = React.useMemo(() => getTicketProgress(storeData), [storeData]);
 
   return (
     <div className="absolute inset-0 z-50 flex flex-col overflow-hidden"

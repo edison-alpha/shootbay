@@ -1,114 +1,39 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- Promote User ke Admin (Bypass Security Trigger)
--- Jalankan di Supabase SQL Editor
+-- Promote bayumukti3366@gmail.com to Admin
+-- Run this in Supabase SQL Editor (runs as postgres superuser, bypasses RLS)
+-- IMPORTANT: Run AFTER user has signed up via Google OAuth
 -- ═══════════════════════════════════════════════════════════════════════════
 
--- ─── 1. CEK USER YANG ADA ──────────────────────────────────────────────────
+-- Step 1: Temporarily disable the trigger that prevents role changes
+ALTER TABLE public.profiles DISABLE TRIGGER prevent_unauthorized_role_change_trigger;
 
+-- Step 2: Promote by email
+UPDATE public.profiles
+SET role = 'admin', updated_at = NOW()
+WHERE id IN (
+  SELECT id FROM auth.users WHERE email = 'bayumukti3366@gmail.com'
+);
+
+-- Step 3: Re-enable the trigger
+ALTER TABLE public.profiles ENABLE TRIGGER prevent_unauthorized_role_change_trigger;
+
+-- Step 4: Verify promotion
 SELECT 
   p.id,
   p.username,
-  p.game_user_id,
+  p.display_name,
   p.role,
   u.email,
   p.created_at
 FROM public.profiles p
-JOIN auth.users u ON p.id = u.id
-ORDER BY p.created_at DESC;
+JOIN auth.users u ON u.id = p.id
+WHERE u.email = 'bayumukti3366@gmail.com';
 
--- ─── 2. PROMOTE USER KE ADMIN (BYPASS TRIGGER) ────────────────────────────
-
--- METODE 1: Disable trigger sementara, update, lalu enable kembali
--- (Recommended - Paling aman)
-
-BEGIN;
-
--- Disable trigger
-ALTER TABLE public.profiles DISABLE TRIGGER prevent_unauthorized_role_change_trigger;
-
--- Promote user berdasarkan email (GANTI EMAIL SESUAI KEBUTUHAN)
-UPDATE public.profiles
-SET role = 'admin', updated_at = NOW()
-WHERE id = (
-  SELECT id FROM auth.users WHERE email = 'admin@gmail.com'
-);
-
--- Enable trigger kembali
-ALTER TABLE public.profiles ENABLE TRIGGER prevent_unauthorized_role_change_trigger;
-
-COMMIT;
-
--- ─── ALTERNATIF: Promote berdasarkan username ─────────────────────────────
-
--- BEGIN;
--- ALTER TABLE public.profiles DISABLE TRIGGER prevent_unauthorized_role_change_trigger;
--- UPDATE public.profiles
--- SET role = 'admin', updated_at = NOW()
--- WHERE username = 'admin';
--- ALTER TABLE public.profiles ENABLE TRIGGER prevent_unauthorized_role_change_trigger;
--- COMMIT;
-
--- ─── ALTERNATIF: Promote user pertama yang signup ─────────────────────────
-
--- BEGIN;
--- ALTER TABLE public.profiles DISABLE TRIGGER prevent_unauthorized_role_change_trigger;
--- UPDATE public.profiles
--- SET role = 'admin', updated_at = NOW()
--- WHERE id = (
---   SELECT id FROM public.profiles ORDER BY created_at ASC LIMIT 1
--- );
--- ALTER TABLE public.profiles ENABLE TRIGGER prevent_unauthorized_role_change_trigger;
--- COMMIT;
-
--- ─── 3. VERIFIKASI HASIL ───────────────────────────────────────────────────
-
-SELECT 
-  p.username,
-  p.role,
-  u.email,
-  CASE 
-    WHEN p.role = 'admin' THEN '✅ ADMIN'
-    ELSE '👤 PLAYER'
-  END as status
-FROM public.profiles p
-JOIN auth.users u ON p.id = u.id
-WHERE p.role = 'admin';
-
--- Harus ada minimal 1 admin
-
--- ─── 4. CEK TRIGGER STATUS ─────────────────────────────────────────────────
-
-SELECT 
-  trigger_name,
-  event_object_table,
-  action_timing,
-  event_manipulation,
-  CASE 
-    WHEN tgenabled = 'O' THEN '✅ ENABLED'
-    WHEN tgenabled = 'D' THEN '⚠️ DISABLED'
-    ELSE 'UNKNOWN'
-  END as status
-FROM pg_trigger t
-JOIN pg_class c ON t.tgrelid = c.oid
-WHERE c.relname = 'profiles' 
-  AND t.tgname = 'prevent_unauthorized_role_change_trigger';
-
--- Pastikan trigger ENABLED setelah promote
+-- Expected result: role should be 'admin'
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- NOTES:
--- 
--- ⚠️ PENTING: Script ini disable trigger sementara untuk bypass security
--- - Trigger akan di-enable kembali setelah update
--- - Gunakan BEGIN/COMMIT untuk atomic transaction
--- - Jika ada error, trigger tetap enabled (rollback otomatis)
--- 
--- SECURITY:
--- - Hanya jalankan dari Supabase SQL Editor (service role)
--- - Jangan expose script ini ke client
--- - Setelah ada admin pertama, gunakan Admin Dashboard untuk promote user lain
--- 
--- ALTERNATIVE:
--- - Gunakan Admin Access page untuk auto-create admin pertama
--- - Gunakan bootstrap_first_admin() RPC function (sudah built-in)
+-- Alternative: If you get permission error, use this simpler approach
 -- ═══════════════════════════════════════════════════════════════════════════
+
+-- Just run this single command (SQL Editor runs as superuser):
+-- UPDATE public.profiles SET role = 'admin' WHERE id = (SELECT id FROM auth.users WHERE email = 'bayumukti3366@gmail.com' LIMIT 1);

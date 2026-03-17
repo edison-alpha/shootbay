@@ -338,7 +338,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
     );
   }
 
-  return <AdminPanel admin={adminUser} onLogout={handleLogout} />;
+  return <AdminPanel admin={adminUser} onLogout={handleLogout} onBackToUserView={onBack} />;
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -414,7 +414,7 @@ const AdminLoginGate: React.FC<{
 // AdminPanel — Main admin dashboard content
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const AdminPanel: React.FC<{ admin: AuthUser; onLogout: () => void }> = ({ admin, onLogout }) => {
+const AdminPanel: React.FC<{ admin: AuthUser; onLogout: () => void; onBackToUserView: () => void }> = ({ admin, onLogout, onBackToUserView }) => {
   const [activeTab, setActiveTab] = useState<AdminTab>('dashboard');
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [prizes, setPrizes] = useState<Prize[]>([]);
@@ -493,29 +493,47 @@ const AdminPanel: React.FC<{ admin: AuthUser; onLogout: () => void }> = ({ admin
     }
   }, [confirmModal.loading]);
 
-  const refreshData = useCallback(async (options?: { silent?: boolean }) => {
+  const refreshData = useCallback(async (options?: { silent?: boolean; tables?: string[] }) => {
     const silent = options?.silent ?? false;
+    const tables = options?.tables; // Specific tables to refresh
+    
     if (!silent && firstLoadRef.current) {
       setLoading(true);
     }
     if (!silent && !firstLoadRef.current) {
       setRefreshing(true);
     }
+    
     try {
-      const [s, p, c, b, pl, sp] = await Promise.all([
-        getDashboardStats(),
-        getAllPrizes(),
-        getAllGreetingCards(),
-        getAllMysteryBoxes(),
-        getAllPlayers(),
-        getAllSpinWheelPrizes(),
-      ]);
-      setStats(s);
-      setPrizes(p);
-      setCards(c);
-      setBoxes(b);
-      setPlayers(pl);
-      setSpinPrizes(sp);
+      // If specific tables requested, only refresh those
+      if (tables && tables.length > 0) {
+        const promises: Promise<unknown>[] = [];
+        
+        if (tables.includes('stats')) promises.push(getDashboardStats().then(s => setStats(s)));
+        if (tables.includes('prizes')) promises.push(getAllPrizes().then(p => setPrizes(p)));
+        if (tables.includes('cards')) promises.push(getAllGreetingCards().then(c => setCards(c)));
+        if (tables.includes('boxes')) promises.push(getAllMysteryBoxes().then(b => setBoxes(b)));
+        if (tables.includes('players')) promises.push(getAllPlayers().then(pl => setPlayers(pl)));
+        if (tables.includes('spin')) promises.push(getAllSpinWheelPrizes().then(sp => setSpinPrizes(sp)));
+        
+        await Promise.all(promises);
+      } else {
+        // Full refresh
+        const [s, p, c, b, pl, sp] = await Promise.all([
+          getDashboardStats(),
+          getAllPrizes(),
+          getAllGreetingCards(),
+          getAllMysteryBoxes(),
+          getAllPlayers(),
+          getAllSpinWheelPrizes(),
+        ]);
+        setStats(s);
+        setPrizes(p);
+        setCards(c);
+        setBoxes(b);
+        setPlayers(pl);
+        setSpinPrizes(sp);
+      }
     } catch (err) {
       console.error('Failed to refresh data:', err);
       if (!silent) showToast('error', 'Failed to refresh data');
@@ -533,17 +551,31 @@ const AdminPanel: React.FC<{ admin: AuthUser; onLogout: () => void }> = ({ admin
   }, [refreshData]);
 
   useEffect(() => {
-    const scheduleRefresh = () => {
+    // Map table names to refresh targets
+    const tableRefreshMap: Record<string, string[]> = {
+      'mystery_boxes': ['boxes', 'stats'],
+      'prizes': ['prizes'],
+      'greeting_cards': ['cards'],
+      'profiles': ['players', 'stats'],
+      'spin_wheel_prizes': ['spin'],
+      'level_progress': ['stats'],
+      'inventory': ['stats'],
+      'voucher_redemptions': ['stats'],
+    };
+
+    const scheduleRefresh = (tableName: string) => {
       if (refreshTimeoutRef.current) {
         clearTimeout(refreshTimeoutRef.current);
       }
 
       refreshTimeoutRef.current = window.setTimeout(() => {
-        refreshData({ silent: true }).catch(console.error);
-      }, 250);
+        const tables = tableRefreshMap[tableName] || [];
+        refreshData({ silent: true, tables }).catch(console.error);
+      }, 1000); // Increased debounce to 1s
     };
 
-    const POLL_INTERVAL_MS = 10000;
+    // Reduced polling to 60s (was 30s)
+    const POLL_INTERVAL_MS = 60000;
     const pollInterval = window.setInterval(() => {
       refreshData({ silent: true }).catch(console.error);
     }, POLL_INTERVAL_MS);
@@ -558,16 +590,29 @@ const AdminPanel: React.FC<{ admin: AuthUser; onLogout: () => void }> = ({ admin
     window.addEventListener('online', handleVisibilityOrFocus);
     document.addEventListener('visibilitychange', handleVisibilityOrFocus);
 
+    // Optimized realtime: Only subscribe to tables that change frequently
     const channel = supabase
       .channel('admin-dashboard-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'mystery_boxes' }, scheduleRefresh)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'prizes' }, scheduleRefresh)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'greeting_cards' }, scheduleRefresh)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, scheduleRefresh)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'spin_wheel_prizes' }, scheduleRefresh)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'level_progress' }, scheduleRefresh)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory' }, scheduleRefresh)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'voucher_redemptions' }, scheduleRefresh)
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'mystery_boxes' 
+      }, () => scheduleRefresh('mystery_boxes'))
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'prizes' 
+      }, () => scheduleRefresh('prizes'))
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'greeting_cards' 
+      }, () => scheduleRefresh('greeting_cards'))
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'spin_wheel_prizes' 
+      }, () => scheduleRefresh('spin_wheel_prizes'))
       .subscribe();
 
     return () => {
@@ -617,6 +662,16 @@ const AdminPanel: React.FC<{ admin: AuthUser; onLogout: () => void }> = ({ admin
             Logout
           </ActionBtn>
         </div>
+      </div>
+
+      {/* ── Back to User View Button ── */}
+      <div className="px-4 py-2 bg-blue-900/20 border-b border-blue-800/30">
+        <button
+          onClick={onBackToUserView}
+          className="text-xs text-blue-400 hover:text-blue-300 transition flex items-center gap-1"
+        >
+          ← Back to User View
+        </button>
       </div>
 
       {/* ── Tabs ── */}

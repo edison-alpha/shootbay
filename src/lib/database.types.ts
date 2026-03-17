@@ -400,6 +400,35 @@ export interface Database {
         Args: Record<string, never>;
         Returns: string;
       };
+      admin_grant_tickets_to_player: {
+        Args: {
+          target_user_id: string;
+          amount: number;
+        };
+        Returns: boolean;
+      };
+      admin_grant_tickets_to_all: {
+        Args: {
+          amount: number;
+        };
+        Returns: number;
+      };
+      bootstrap_first_admin: {
+        Args: {
+          target_user_id: string;
+        };
+        Returns: boolean;
+      };
+      sync_level_best_values: {
+        Args: {
+          p_user_id: string;
+          p_level_id: number;
+          p_dimsum: number;
+          p_stars: number;
+          p_best_time: number;
+        };
+        Returns: void;
+      };
     };
   };
 }

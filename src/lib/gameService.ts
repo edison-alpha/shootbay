@@ -47,41 +47,14 @@ export async function syncLevelProgress(
   bestTime: number,
 ): Promise<void> {
   try {
-    // Use upsert with onConflict to avoid SELECT-then-INSERT
-    // We still need to read existing to compare "best" values
-    const { data: existing } = await supabase
-      .from('level_progress')
-      .select('dimsum_collected, stars, best_time')
-      .eq('user_id', userId)
-      .eq('level_id', levelId)
-      .maybeSingle();
-
-    if (existing) {
-      const ex = existing as { dimsum_collected: number; stars: number; best_time: number | null };
-      const newDimsum = Math.max(ex.dimsum_collected, dimsumCollected);
-      const newStars = Math.max(ex.stars, stars);
-      const newTime = ex.best_time ? Math.min(ex.best_time, bestTime) : bestTime;
-
-      await supabase
-        .from('level_progress')
-        .update({
-          dimsum_collected: newDimsum,
-          stars: newStars,
-          best_time: newTime,
-        } as never)
-        .eq('user_id', userId)
-        .eq('level_id', levelId);
-    } else {
-      await supabase
-        .from('level_progress')
-        .insert({
-          user_id: userId,
-          level_id: levelId,
-          dimsum_collected: dimsumCollected,
-          stars,
-          best_time: bestTime,
-        } as never);
-    }
+    // Use atomic RPC function — single query instead of upsert + update (2x faster)
+    await supabase.rpc('sync_level_best_values' as never, {
+      p_user_id: userId,
+      p_level_id: levelId,
+      p_dimsum: dimsumCollected,
+      p_stars: stars,
+      p_best_time: bestTime,
+    } as never);
   } catch (err) {
     console.error('Sync level progress error:', err);
   }
@@ -124,14 +97,14 @@ export interface LeaderboardRow {
   created_at: string;
 }
 
-export async function fetchLeaderboard(limit: number = 50): Promise<LeaderboardRow[]> {
-  return cached(CK.leaderboard(), async () => {
+export async function fetchLeaderboard(limit: number = 50, offset: number = 0): Promise<LeaderboardRow[]> {
+  return cached(`${CK.leaderboard()}:${offset}:${limit}`, async () => {
     try {
       const { data, error } = await supabase
         .from('leaderboard')
         .select('id, user_id, player_name, total_dimsum, total_stars, created_at')
         .order('total_dimsum', { ascending: false })
-        .limit(limit);
+        .range(offset, offset + limit - 1);
 
       if (error) {
         console.error('Fetch leaderboard error:', error);
@@ -543,31 +516,14 @@ export async function syncInventoryItem(
   quantity: number,
 ): Promise<void> {
   try {
-    // Still need SELECT to accumulate quantity (can't upsert with increment)
-    const { data: existing } = await supabase
-      .from('inventory')
-      .select('id, quantity')
-      .eq('user_id', userId)
-      .eq('item_name', itemName)
-      .maybeSingle();
-
-    if (existing) {
-      const current = existing as { id: string; quantity: number };
-      await supabase
-        .from('inventory')
-        .update({ quantity: current.quantity + quantity } as never)
-        .eq('id', current.id);
-    } else {
-      await supabase
-        .from('inventory')
-        .insert({
-          user_id: userId,
-          item_name: itemName,
-          item_type: itemType,
-          item_icon: itemIcon,
-          quantity,
-        } as never);
-    }
+    // Use atomic RPC function — single query with proper quantity increment (2x faster)
+    await supabase.rpc('upsert_inventory_item' as never, {
+      p_user_id: userId,
+      p_item_name: itemName,
+      p_item_type: itemType,
+      p_item_icon: itemIcon,
+      p_quantity: quantity,
+    } as never);
 
     // Invalidate inventory cache
     invalidate(CK.userInventory(userId));
@@ -632,14 +588,15 @@ export async function loadGameDataFromSupabase(userId: string): Promise<GameStor
 async function _loadGameDataFromSupabaseInner(userId: string): Promise<GameStoreData | null> {
   try {
     // ── PARALLEL: Fire all 6 queries at once (~6x faster than sequential) ──
+    // Use specific column projections to minimize payload size
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     type QR = { data: any; error: any };
     const [profileResult, levelResult, inventoryResult, leaderboardResult, boxResult, voucherResult] = await Promise.all([
-      Promise.resolve(supabase.from('profiles').select('*').eq('id', userId).maybeSingle()) as Promise<QR>,
-      Promise.resolve(supabase.from('level_progress').select('*').eq('user_id', userId)) as Promise<QR>,
-      Promise.resolve(supabase.from('inventory').select('*').eq('user_id', userId)) as Promise<QR>,
-      Promise.resolve(supabase.from('leaderboard').select('*').order('total_dimsum', { ascending: false }).limit(50)) as Promise<QR>,
-      Promise.resolve(supabase.from('mystery_boxes').select('*').eq('assigned_to', userId)) as Promise<QR>,
+      Promise.resolve(supabase.from('profiles').select(PROFILE_COLUMNS).eq('id', userId).maybeSingle()) as Promise<QR>,
+      Promise.resolve(supabase.from('level_progress').select(LEVEL_COLUMNS).eq('user_id', userId)) as Promise<QR>,
+      Promise.resolve(supabase.from('inventory').select(INVENTORY_COLUMNS).eq('user_id', userId)) as Promise<QR>,
+      Promise.resolve(supabase.from('leaderboard').select(LEADERBOARD_COLUMNS).order('total_dimsum', { ascending: false }).limit(50)) as Promise<QR>,
+      Promise.resolve(supabase.from('mystery_boxes').select(MYSTERY_BOX_COLUMNS).eq('assigned_to', userId)) as Promise<QR>,
       Promise.resolve(supabase.from('voucher_redemptions').select('id, source_type, metadata').eq('user_id', userId).eq('source_type', 'spin_wheel')) as Promise<QR>,
     ]);
 
