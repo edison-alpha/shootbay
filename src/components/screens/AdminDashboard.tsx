@@ -22,6 +22,8 @@ import {
   createSpinWheelPrize,
   updateSpinWheelPrize,
   deleteSpinWheelPrize,
+  grantTicketsToAllPlayers,
+  grantTicketsToPlayer,
 } from '../../lib/adminService';
 import type { DashboardStats } from '../../lib/adminService';
 import type { Prize, GreetingCard, MysteryBox, Profile, SpinWheelPrize } from '../../lib/database.types';
@@ -357,7 +359,7 @@ const AdminPanel: React.FC<{ admin: AuthUser; onLogout: () => void }> = ({ admin
             {activeTab === 'spin_wheel' && (
               <SpinWheelTab spinPrizes={spinPrizes} adminId={admin.id} onRefresh={refreshData} />
             )}
-            {activeTab === 'players' && <PlayersTab players={players} />}
+            {activeTab === 'players' && <PlayersTab players={players} onRefresh={refreshData} />}
           </>
         )}
       </div>
@@ -1673,37 +1675,96 @@ const SpinWheelTab: React.FC<{
 // Players Tab
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const PlayersTab: React.FC<{ players: Profile[] }> = ({ players }) => (
-  <div>
-    <h2 className="text-lg font-bold mb-4">👥 Players ({players.length})</h2>
-    <div className="space-y-2">
-      {players.map((player) => (
-        <div key={player.id} className="rounded-xl bg-gray-900 border border-gray-800 p-3 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center text-lg flex-shrink-0">
-            {player.avatar_url ? (
-              <img src={player.avatar_url} alt="" className="w-full h-full rounded-full object-cover" />
-            ) : (
-              '👤'
-            )}
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <p className="text-sm font-bold text-white truncate">{player.display_name || player.username}</p>
-              {player.role === 'admin' && (
-                <span className="text-[9px] px-1.5 py-0.5 rounded bg-blue-900/30 text-blue-400 font-bold">ADMIN</span>
+const PlayersTab: React.FC<{ players: Profile[]; onRefresh: () => void }> = ({ players, onRefresh }) => {
+  const [bulkAmount, setBulkAmount] = useState('1');
+  const [grantingAll, setGrantingAll] = useState(false);
+  const [grantingPlayerId, setGrantingPlayerId] = useState<string | null>(null);
+
+  const playerOnly = players.filter((p) => p.role === 'player');
+
+  const handleGrantAll = async () => {
+    const amount = Math.max(1, parseInt(bulkAmount || '1', 10) || 1);
+    setGrantingAll(true);
+    await grantTicketsToAllPlayers(amount);
+    setGrantingAll(false);
+    onRefresh();
+  };
+
+  const handleGrantOne = async (playerId: string, amount: number) => {
+    setGrantingPlayerId(playerId);
+    await grantTicketsToPlayer(playerId, amount);
+    setGrantingPlayerId(null);
+    onRefresh();
+  };
+
+  return (
+    <div>
+      <h2 className="text-lg font-bold mb-4">👥 Players ({players.length})</h2>
+
+      <div className="rounded-xl bg-gray-900 border border-gray-800 p-3 mb-4">
+        <p className="text-xs font-bold text-purple-300 mb-2">🎫 Gift Ticket to All Players</p>
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            min={1}
+            value={bulkAmount}
+            onChange={(e) => setBulkAmount(e.target.value)}
+            className="w-24 px-2 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm outline-none"
+          />
+          <button
+            onClick={handleGrantAll}
+            disabled={grantingAll || playerOnly.length === 0}
+            className="px-3 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-xs font-black transition"
+          >
+            {grantingAll ? 'Sending...' : `Gift to All (${playerOnly.length})`}
+          </button>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        {players.map((player) => (
+          <div key={player.id} className="rounded-xl bg-gray-900 border border-gray-800 p-3 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center text-lg flex-shrink-0">
+              {player.avatar_url ? (
+                <img src={player.avatar_url} alt="" className="w-full h-full rounded-full object-cover" />
+              ) : (
+                '👤'
               )}
             </div>
-            <p className="text-[10px] text-gray-500">@{player.username} • {player.game_user_id}</p>
-            <div className="flex items-center gap-3 mt-1 text-[10px] text-gray-500">
-              <span>🥟 {player.total_dimsum}</span>
-              <span>⭐ {player.total_stars}</span>
-              <span>🎫 {player.tickets}</span>
-              <span>🏆 Lv.{player.levels_completed}</span>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-bold text-white truncate">{player.display_name || player.username}</p>
+                {player.role === 'admin' && (
+                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-blue-900/30 text-blue-400 font-bold">ADMIN</span>
+                )}
+              </div>
+              <p className="text-[10px] text-gray-500">@{player.username} • {player.game_user_id}</p>
+              <div className="flex items-center gap-3 mt-1 text-[10px] text-gray-500">
+                <span>🥟 {player.total_dimsum}</span>
+                <span>⭐ {player.total_stars}</span>
+                <span>🎫 {player.tickets}</span>
+                <span>🏆 Lv.{player.levels_completed}</span>
+              </div>
             </div>
+
+            {player.role === 'player' && (
+              <div className="flex gap-1.5">
+                {[1, 3, 5].map((amt) => (
+                  <button
+                    key={amt}
+                    onClick={() => handleGrantOne(player.id, amt)}
+                    disabled={grantingPlayerId === player.id || grantingAll}
+                    className="px-2 py-1 rounded-md bg-emerald-700/50 hover:bg-emerald-600/60 disabled:opacity-50 text-[10px] font-bold"
+                  >
+                    +{amt} 🎫
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
-        </div>
-      ))}
-      {players.length === 0 && <p className="text-center text-gray-600 text-sm py-8">No players yet</p>}
+        ))}
+        {players.length === 0 && <p className="text-center text-gray-600 text-sm py-8">No players yet</p>}
+      </div>
     </div>
-  </div>
-);
+  );
+};

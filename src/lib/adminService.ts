@@ -338,6 +338,74 @@ export async function getPlayerById(userId: string): Promise<Profile | null> {
   return data;
 }
 
+export async function grantTicketsToPlayer(userId: string, amount: number): Promise<boolean> {
+  const safeAmount = Math.max(1, Math.floor(amount));
+
+  const { data: profile, error: fetchError } = await supabase
+    .from('profiles')
+    .select('id, tickets, role')
+    .eq('id', userId)
+    .maybeSingle();
+
+  if (fetchError || !profile) {
+    console.error('Grant ticket (single) fetch error:', fetchError);
+    return false;
+  }
+
+  if ((profile as { role: string }).role !== 'player') {
+    return false;
+  }
+
+  const currentTickets = (profile as { tickets: number }).tickets || 0;
+  const { error } = await supabase
+    .from('profiles')
+    .update({
+      tickets: currentTickets + safeAmount,
+      updated_at: new Date().toISOString(),
+    } as never)
+    .eq('id', userId);
+
+  if (error) {
+    console.error('Grant ticket (single) update error:', error);
+    return false;
+  }
+
+  return true;
+}
+
+export async function grantTicketsToAllPlayers(amount: number): Promise<number> {
+  const safeAmount = Math.max(1, Math.floor(amount));
+
+  const { data: players, error: fetchError } = await supabase
+    .from('profiles')
+    .select('id, tickets')
+    .eq('role', 'player');
+
+  if (fetchError || !players) {
+    console.error('Grant ticket (all) fetch error:', fetchError);
+    return 0;
+  }
+
+  let successCount = 0;
+
+  await Promise.all(players.map(async (p) => {
+    const currentTickets = (p as { tickets: number }).tickets || 0;
+    const { error } = await supabase
+      .from('profiles')
+      .update({
+        tickets: currentTickets + safeAmount,
+        updated_at: new Date().toISOString(),
+      } as never)
+      .eq('id', (p as { id: string }).id);
+
+    if (!error) {
+      successCount += 1;
+    }
+  }));
+
+  return successCount;
+}
+
 // ─── Dashboard Stats ──────────────────────────────────────────────────────────
 
 export interface DashboardStats {
