@@ -679,18 +679,9 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
         await updateVoucherRedemptionStatus(redemptionId, 'sent');
       }
 
-      // Close modal after successful send
-      setTimeout(() => {
-        setShowClaimModal(false);
-        setSendingWA(false);
-      }, 500);
-    } catch (error) {
-      console.error('Error sending to WhatsApp:', error);
+      setShowClaimModal(false);
+    } finally {
       setSendingWA(false);
-      // Still allow closing modal even if there's an error
-      setTimeout(() => {
-        setShowClaimModal(false);
-      }, 1000);
     }
   }, [generateProfessionalWAMessage, sendingWA, spinResults, userId]);
 
@@ -1083,12 +1074,6 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
         <div className="absolute inset-0 z-[80] flex items-end justify-center px-3 py-3 sm:items-center">
           <div
             className="absolute inset-0 bg-black/80"
-            onClick={() => {
-              // Allow closing modal by clicking backdrop after message is ready
-              if (!sendingWA && !generatingClaimMessage && claimMessage.trim()) {
-                setShowClaimModal(false);
-              }
-            }}
           />
 
           <div
@@ -1099,24 +1084,9 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
               boxShadow: '0 10px 35px rgba(0,0,0,0.65)',
             }}
           >
-            {/* Close button - only show when message is ready */}
-            {!sendingWA && !generatingClaimMessage && claimMessage.trim() && (
-              <button
-                onClick={() => setShowClaimModal(false)}
-                className="absolute top-3 right-3 w-7 h-7 rounded-full flex items-center justify-center transition hover:bg-white/10"
-                style={{ color: '#6ee7b7' }}
-              >
-                ✕
-              </button>
-            )}
-
             <h3 className="text-base font-black text-emerald-300 mb-1">🎫 Claim Hadiah Lucky Spin</h3>
             <p className="text-[10px] text-emerald-200/70 mb-1">Pesan WA akan disiapkan otomatis untuk admin.</p>
-            {(!claimMessage.trim() || generatingClaimMessage) ? (
-              <p className="text-[10px] text-amber-300/90 mb-3 font-bold">Langkah ini wajib. Card tidak bisa ditutup sebelum klik claim.</p>
-            ) : (
-              <p className="text-[10px] text-emerald-300/90 mb-3 font-bold">Pesan siap! Klik "Kirim ke WA" atau tutup modal ini.</p>
-            )}
+            <p className="text-[10px] text-amber-300/90 mb-3 font-bold">Langkah ini wajib. Card tidak bisa ditutup sebelum klik claim.</p>
 
             <div className="mb-3 rounded-lg p-2"
               style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.25)' }}
@@ -1145,48 +1115,31 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
               />
             </div>
 
-            <div className="flex flex-col gap-2">
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  onClick={prepareClaimMessage}
-                  disabled={generatingClaimMessage || sendingWA}
-                  className="py-2 rounded-lg text-[11px] font-bold uppercase tracking-wide disabled:opacity-60"
-                  style={{
-                    background: 'rgba(8,145,178,0.2)',
-                    border: '1px solid rgba(103,232,249,0.35)',
-                    color: '#a5f3fc',
-                  }}
-                >
-                  {generatingClaimMessage ? 'Menyiapkan pesan...' : 'Siapkan Ulang'}
-                </button>
-                <button
-                  onClick={() => handleSendVoucherToWhatsApp(claimMessage)}
-                  disabled={sendingWA || generatingClaimMessage || !claimMessage.trim()}
-                  className="py-2 rounded-lg text-[11px] font-black uppercase tracking-wide disabled:opacity-60"
-                  style={{
-                    background: 'linear-gradient(180deg, #059669 0%, #047857 100%)',
-                    border: '1px solid rgba(52,211,153,0.45)',
-                    color: '#ecfdf5',
-                  }}
-                >
-                  {sendingWA ? 'Sending...' : 'Kirim ke WA'}
-                </button>
-              </div>
-              
-              {/* Close button - show after message is ready */}
-              {!sendingWA && !generatingClaimMessage && claimMessage.trim() && (
-                <button
-                  onClick={() => setShowClaimModal(false)}
-                  className="w-full py-2 rounded-lg text-[11px] font-bold uppercase tracking-wide transition hover:opacity-80"
-                  style={{
-                    background: 'rgba(100,100,100,0.2)',
-                    border: '1px solid rgba(150,150,150,0.3)',
-                    color: '#d1d5db',
-                  }}
-                >
-                  Tutup
-                </button>
-              )}
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={prepareClaimMessage}
+                disabled={generatingClaimMessage || sendingWA}
+                className="py-2 rounded-lg text-[11px] font-bold uppercase tracking-wide disabled:opacity-60"
+                style={{
+                  background: 'rgba(8,145,178,0.2)',
+                  border: '1px solid rgba(103,232,249,0.35)',
+                  color: '#a5f3fc',
+                }}
+              >
+                {generatingClaimMessage ? 'Menyiapkan pesan...' : 'Siapkan Ulang'}
+              </button>
+              <button
+                onClick={() => handleSendVoucherToWhatsApp(claimMessage)}
+                disabled={sendingWA || generatingClaimMessage || !claimMessage.trim()}
+                className="py-2 rounded-lg text-[11px] font-black uppercase tracking-wide disabled:opacity-60"
+                style={{
+                  background: 'linear-gradient(180deg, #059669 0%, #047857 100%)',
+                  border: '1px solid rgba(52,211,153,0.45)',
+                  color: '#ecfdf5',
+                }}
+              >
+                {sendingWA ? 'Sending...' : 'Kirim ke WA'}
+              </button>
             </div>
           </div>
         </div>

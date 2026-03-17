@@ -364,19 +364,8 @@ const ItemDetailModal: React.FC<{
       }
 
       openWhatsAppToAdmin(msg);
-      
-      // Auto-close modal after successful send
-      setTimeout(() => {
-        setSendingWA(false);
-        onClose();
-      }, 500);
-    } catch (error) {
-      console.error('Error sending to WhatsApp:', error);
+    } finally {
       setSendingWA(false);
-      // Still allow closing modal even if there's an error
-      setTimeout(() => {
-        onClose();
-      }, 1000);
     }
   };
 
