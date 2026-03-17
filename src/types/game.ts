@@ -1,7 +1,6 @@
 // ─── Game State Machine ─────────────────────────────────────────────────────
 export type GameState =
   | 'intro'
-  | 'signup'
   | 'login'
   | 'adminDashboard'
   | 'nameEntry'

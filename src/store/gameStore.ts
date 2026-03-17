@@ -334,9 +334,13 @@ export function saveLevelProgress(
   const newTotalDimsum = Object.values({ ...data.levels, [levelId]: { dimsumCollected: bestDimsum } })
     .reduce((sum, lp) => sum + (lp as { dimsumCollected: number }).dimsumCollected, 0);
 
-  // Calculate tickets based on total dimsum
-  const totalTicketsEarned = Math.floor(newTotalDimsum / DIMSUM_PER_TICKET);
-  const newTickets = totalTicketsEarned - data.ticketsUsed;
+  // Calculate ADDITIONAL tickets earned from this level's dimsum gain.
+  // Uses incremental calculation to preserve admin-granted bonus tickets.
+  // (The old formula recalculated from scratch and erased admin-granted tickets.)
+  const previousTicketsFromDimsum = Math.floor(data.totalDimsum / DIMSUM_PER_TICKET);
+  const newTicketsFromDimsum = Math.floor(newTotalDimsum / DIMSUM_PER_TICKET);
+  const additionalTickets = newTicketsFromDimsum - previousTicketsFromDimsum;
+  const newTickets = data.tickets + additionalTickets;
 
   const updated: GameStoreData = {
     ...data,

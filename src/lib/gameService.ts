@@ -631,15 +631,16 @@ export async function loadGameDataFromSupabase(userId: string): Promise<GameStor
 
 async function _loadGameDataFromSupabaseInner(userId: string): Promise<GameStoreData | null> {
   try {
-    // ── PARALLEL: Fire all 5 queries at once (~5x faster than sequential) ──
+    // ── PARALLEL: Fire all 6 queries at once (~6x faster than sequential) ──
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     type QR = { data: any; error: any };
-    const [profileResult, levelResult, inventoryResult, leaderboardResult, boxResult] = await Promise.all([
+    const [profileResult, levelResult, inventoryResult, leaderboardResult, boxResult, voucherResult] = await Promise.all([
       Promise.resolve(supabase.from('profiles').select('*').eq('id', userId).maybeSingle()) as Promise<QR>,
       Promise.resolve(supabase.from('level_progress').select('*').eq('user_id', userId)) as Promise<QR>,
       Promise.resolve(supabase.from('inventory').select('*').eq('user_id', userId)) as Promise<QR>,
       Promise.resolve(supabase.from('leaderboard').select('*').order('total_dimsum', { ascending: false }).limit(50)) as Promise<QR>,
       Promise.resolve(supabase.from('mystery_boxes').select('*').eq('assigned_to', userId)) as Promise<QR>,
+      Promise.resolve(supabase.from('voucher_redemptions').select('id, source_type, metadata').eq('user_id', userId).eq('source_type', 'spin_wheel')) as Promise<QR>,
     ]);
 
     // Check profile
@@ -732,8 +733,18 @@ async function _loadGameDataFromSupabaseInner(userId: string): Promise<GameStore
       }),
     );
 
-    // Build mystery box rewards
+    // Count already-consumed spins from voucher_redemptions (prevents re-spinning on reload)
+    let consumedSpins = 0;
+    if (voucherResult.data) {
+      for (const v of voucherResult.data as Array<{ metadata: unknown }>) {
+        const meta = v.metadata as { spin_results?: unknown[] } | null;
+        consumedSpins += meta?.spin_results?.length ?? 0;
+      }
+    }
+
+    // Build mystery box rewards (including spin tickets from boxes with spin wheel)
     const mysteryBoxRewards: MysteryBoxReward[] = [];
+    let totalBoxSpins = 0;
     if (boxResult.data) {
       for (const box of boxResult.data as MysteryBox[]) {
         mysteryBoxRewards.push({
@@ -746,7 +757,29 @@ async function _loadGameDataFromSupabaseInner(userId: string): Promise<GameStore
           claimed: box.status === 'opened',
           claimedAt: box.opened_at ? new Date(box.opened_at).getTime() : undefined,
         });
+
+        // If the box includes a spin wheel, add a spin_ticket reward so the
+        // SpinWheelScreen can count available spins. Without this the client-side
+        // spin_ticket created during handleRedeem is lost on every realtime sync.
+        if (box.include_spin_wheel && box.spin_count > 0 && box.status === 'opened') {
+          totalBoxSpins += box.spin_count;
+        }
       }
+    }
+
+    // Add spin_ticket rewards with remaining (unconsumed) spins
+    const remainingSpins = Math.max(0, totalBoxSpins - consumedSpins);
+    if (remainingSpins > 0) {
+      mysteryBoxRewards.push({
+        id: `spin_from_boxes_${userId}`,
+        type: 'spin_ticket',
+        name: `🎰 Lucky Spin x${remainingSpins}`,
+        description: `${remainingSpins} spin(s) available from mystery boxes`,
+        icon: '🎰',
+        spins: remainingSpins,
+        claimed: true,
+        claimedAt: Date.now(),
+      });
     }
 
     // Assemble GameStoreData
@@ -841,6 +874,7 @@ export async function saveFullGameDataToSupabase(
 
     // ── Fire all writes in parallel ───────────────────────────────────
     // Use Promise.resolve() to convert Supabase PromiseLike → Promise
+    // Use .upsert() for profiles so new OAuth users get their profile created on first save
     const writes: Promise<unknown>[] = [
       Promise.resolve(
         supabase.from('profiles').update(profilePayload as never).eq('id', userId)

@@ -312,6 +312,54 @@ export async function adminLogin(email: string, password: string): Promise<Login
   return result;
 }
 
+// ─── Google OAuth Login ───────────────────────────────────────────────────────
+
+/**
+ * Initiates Google OAuth login flow via Supabase.
+ *
+ * Prerequisites (Supabase Dashboard → Authentication → Providers → Google):
+ * 1. Enable Google provider
+ * 2. Set Google Client ID and Secret from Google Cloud Console
+ * 3. Add your site URL + `/auth/v1/callback` as Authorized redirect URI in Google Cloud Console
+ * 4. Add your site URL to Supabase → URL Configuration → Site URL
+ *
+ * The flow:
+ * 1. User clicks "Sign in with Google"
+ * 2. Browser redirects to Google consent screen
+ * 3. Google redirects back with tokens in the URL hash
+ * 4. Supabase client picks up tokens (detectSessionInUrl: true)
+ * 5. onAuthStateChange fires → profile is auto-created if needed
+ * 6. User lands on main menu or onboarding
+ */
+export async function loginWithGoogle(): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        // Redirect back to the current page origin after Google auth
+        redirectTo: window.location.origin,
+        queryParams: {
+          // Request profile + email scopes
+          access_type: 'offline',
+          prompt: 'select_account',
+        },
+      },
+    });
+
+    if (error) {
+      console.error('Google OAuth error:', error);
+      return { success: false, error: error.message };
+    }
+
+    // signInWithOAuth triggers a full-page redirect — this code only runs
+    // if the redirect didn't happen (e.g., popup mode or error).
+    return { success: true };
+  } catch (err) {
+    console.error('Google login error:', err);
+    return { success: false, error: 'Failed to initiate Google login' };
+  }
+}
+
 // ─── Logout ───────────────────────────────────────────────────────────────────
 
 export async function logout(): Promise<void> {
@@ -323,19 +371,32 @@ export async function logout(): Promise<void> {
 export async function getCurrentUser(): Promise<AuthUser | null> {
   try {
     // getSession() reads from local storage — instant, no network call.
-    // getUser() would make an HTTP request to validate JWT — unnecessary for
-    // app-start checks since we log in with email/password (session always stored).
     const {
       data: { session },
     } = await supabase.auth.getSession();
 
     if (!session?.user) return null;
 
-    const { data: profile } = await supabase
+    let { data: profile } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', session.user.id)
       .maybeSingle();
+
+    // OAuth users (Google) may not have a profile yet — auto-create one
+    if (!profile) {
+      const meta = session.user.user_metadata || {};
+      const username = sanitizeUsername(meta.full_name || meta.name)
+        || sanitizeUsername(meta.preferred_username)
+        || session.user.email?.split('@')[0]
+        || `player_${session.user.id.substring(0, 6)}`;
+
+      const created = await ensureProfileForAuthenticatedUser(session.user.id, {
+        username,
+        display_name: meta.full_name || meta.name || username,
+      });
+      profile = created as typeof profile;
+    }
 
     if (!profile) return null;
 
@@ -414,10 +475,31 @@ export function onAuthStateChange(callback: (user: AuthUser | null) => void) {
       .select('*')
       .eq('id', session.user.id)
       .maybeSingle()
-      .then(({ data: profile }) => {
+      .then(async ({ data: profile }) => {
         if (profile) {
           callback(profileToAuthUser(profile, session.user.email || ''));
-        } else {
+          return;
+        }
+
+        // OAuth user without profile (first Google sign-in) — auto-create
+        try {
+          const meta = session.user.user_metadata || {};
+          const username = sanitizeUsername(meta.full_name || meta.name)
+            || sanitizeUsername(meta.preferred_username)
+            || session.user.email?.split('@')[0]
+            || `player_${session.user.id.substring(0, 6)}`;
+
+          const newProfile = await ensureProfileForAuthenticatedUser(session.user.id, {
+            username,
+            display_name: meta.full_name || meta.name || username,
+          });
+
+          if (newProfile) {
+            callback(profileToAuthUser(newProfile, session.user.email || ''));
+          } else {
+            callback(null);
+          }
+        } catch {
           callback(null);
         }
       }, () => {

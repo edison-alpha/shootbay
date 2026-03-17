@@ -11,7 +11,7 @@
  * Image cache is capped at 80 entries to prevent storage bloat.
  */
 
-const CACHE_VERSION = 'v4';
+const CACHE_VERSION = 'v5';
 const SHELL_CACHE = `shootbay-shell-${CACHE_VERSION}`;
 const STATIC_CACHE = `shootbay-static-${CACHE_VERSION}`;
 const IMAGE_CACHE = `shootbay-images-${CACHE_VERSION}`;

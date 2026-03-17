@@ -66,8 +66,7 @@ import {
   loadGameDataFromSupabase,
   saveFullGameDataToSupabase,
 } from './lib/gameService';
-import { clearAllCache } from './lib/queryCache';
-import { SignupScreen } from './components/screens/SignupScreen';
+import { clearAllCache, invalidatePrefix, CK } from './lib/queryCache';
 import { LoginScreen } from './components/screens/LoginScreen';
 import { AdminDashboard } from './components/screens/AdminDashboard';
 import { supabase } from './lib/supabase';
@@ -132,6 +131,8 @@ export default function App() {
 
   const realtimeSyncTimeoutRef = useRef<number | null>(null);
   const userRealtimeReloadingRef = useRef(false);
+  /** When true, the next debounced save is suppressed (data just came from server). */
+  const suppressSaveRef = useRef(false);
   const storeDataRef = useRef(storeData);
 
   // ── Refs ─────────────────────────────────────────────────────────────
@@ -184,8 +185,12 @@ export default function App() {
       }
 
       // Try loading from Supabase first
+      // Helper: detect if a profile needs onboarding (auto-created by OAuth, never set up)
+      const needsOnboarding = (profile: { characterId?: string | null } | null | undefined): boolean =>
+        !profile || !profile.characterId;
+
       const cachedData = loadGameData();
-      if (cachedData.profile) {
+      if (cachedData.profile && !needsOnboarding(cachedData.profile)) {
         setPlayerName(cachedData.profile.name);
         setSelectedCharacterId((cachedData.profile.characterId || 'agree') as CharacterId);
         camera.setProfilePhoto(cachedData.profile.profilePhoto || null);
@@ -201,19 +206,19 @@ export default function App() {
         .then((supaData) => {
           const data = supaData;
 
-          if (data.profile) {
+          if (data && data.profile && !needsOnboarding(data.profile)) {
+            // Returning user with completed onboarding → restore session
             setPlayerName(data.profile.name);
             setSelectedCharacterId((data.profile.characterId || 'agree') as CharacterId);
             camera.setProfilePhoto(data.profile.profilePhoto || null);
             setStoreData(data);
 
-            // Restore last resumable state or default to mainMenu
             const savedState = loadSessionState();
             const resumeState = (savedState ?? 'mainMenu') as GameState;
-            // Admin can resume to adminDashboard, players to menu screens
             setGameState(resumeState);
             gameRef.current.state = resumeState;
           } else {
+            // New user (no profile, or profile without characterId = onboarding not done)
             resetForFreshOnboarding();
             setPlayerName(authUser.displayName || authUser.username);
             setGameState('nameEntry');
@@ -609,57 +614,6 @@ export default function App() {
     audio.stopVictoryMusic();
   };
 
-  // ── Auth handlers ──────────────────────────────────────────────────
-  const handleLoginSuccess = (user: AuthUser) => {
-    setAuthUser(user);
-    setActiveStorageUser(user.id);
-
-    // Fast path: show user-scoped cached data instantly (if available)
-    const cachedData = loadGameData();
-    if (cachedData.profile) {
-      setPlayerName(cachedData.profile.name);
-      setSelectedCharacterId((cachedData.profile.characterId || 'agree') as CharacterId);
-      camera.setProfilePhoto(cachedData.profile.profilePhoto || null);
-      setStoreData(cachedData);
-      setGameState('mainMenu');
-      gameRef.current.state = 'mainMenu';
-    }
-
-    // Load data from Supabase (has 12s timeout to prevent infinite hang)
-    loadGameDataFromSupabase(user.id)
-      .then((data) => {
-        if (data && data.profile) {
-          setPlayerName(data.profile.name);
-          setSelectedCharacterId((data.profile.characterId || 'agree') as CharacterId);
-          camera.setProfilePhoto(data.profile.profilePhoto || null);
-          setStoreData(data);
-          setGameState('mainMenu');
-          gameRef.current.state = 'mainMenu';
-        } else {
-          resetForFreshOnboarding();
-          setPlayerName(user.displayName || user.username);
-          setGameState('nameEntry');
-          gameRef.current.state = 'nameEntry';
-        }
-      })
-      .catch(() => {
-        resetForFreshOnboarding();
-        setPlayerName(user.displayName || user.username);
-        setGameState('nameEntry');
-        gameRef.current.state = 'nameEntry';
-      });
-  };
-
-  // Signup always goes through onboarding: nameEntry → photoCapture → tutorial → mainMenu
-  const handleSignupSuccess = (user: AuthUser) => {
-    setAuthUser(user);
-    setActiveStorageUser(user.id);
-    resetForFreshOnboarding();
-    setPlayerName(user.displayName || user.username);
-    setGameState('nameEntry');
-    gameRef.current.state = 'nameEntry';
-  };
-
   // Settings: edit profile handlers
   const handleEditProfile = () => {
     setGameState('nameEntry');
@@ -691,6 +645,14 @@ export default function App() {
   // ── Sync full game data to Supabase (debounced — longer debounce reduces battery/network) ──
   useEffect(() => {
     if (!authUser || !storeData.profile) return;
+
+    // Skip redundant save when storeData was just loaded from Supabase (realtime / poll).
+    // This prevents writing the same data back to the server and avoids
+    // overwriting concurrent admin changes.
+    if (suppressSaveRef.current) {
+      suppressSaveRef.current = false;
+      return;
+    }
 
     // Debounce 800ms: faster than user can navigate away, but reduces write frequency
     const syncTimeout = setTimeout(() => {
@@ -724,6 +686,10 @@ export default function App() {
       realtimeSyncTimeoutRef.current = window.setTimeout(() => {
         if (userRealtimeReloadingRef.current) return;
         userRealtimeReloadingRef.current = true;
+
+        // Invalidate screen caches so next navigation fetches fresh data
+        invalidatePrefix(`user:${authUser.id}:`);
+
         loadGameDataFromSupabase(authUser.id)
           .then((fresh) => {
             if (!fresh?.profile) return;
@@ -732,6 +698,8 @@ export default function App() {
             const freshHash = `${fresh.totalDimsum}|${fresh.tickets}|${fresh.ticketsUsed}|${fresh.inventory.length}|${fresh.mysteryBoxRewards.length}|${fresh.redeemedCodes.length}|${Object.keys(fresh.levels).length}|${fresh.profile?.name ?? ''}|${fresh.profile?.characterId ?? ''}`;
             if (freshHash === storeHashRef.current) return;
 
+            // Mark that this setStoreData came from the server — don't re-save it.
+            suppressSaveRef.current = true;
             setStoreData(fresh);
             setPlayerName(fresh.profile.name);
             setSelectedCharacterId((fresh.profile.characterId || 'agree') as CharacterId);
@@ -824,32 +792,12 @@ export default function App() {
         <IntroScreen loadingProgress={loadingProgress} fading={introFading} />
       )}
 
-      {/* ── Signup ────────────────────────────────────────────────────── */}
-      <ScreenTransition show={gameState === 'signup'} type="fade" duration={200}>
-        <SignupScreen
-          onSignupSuccess={handleSignupSuccess}
-          onGoToLogin={() => {
-            setGameState('login');
-            gameRef.current.state = 'login';
-          }}
-          onGoToAdminLogin={() => {
-            setGameState('adminDashboard');
-            gameRef.current.state = 'adminDashboard';
-          }}
-        />
-      </ScreenTransition>
-
-      {/* ── Login ──────────────────────────────────────────────────────── */}
+      {/* ── Login (Google-only) ──────────────────────────────────────── */}
       <ScreenTransition show={gameState === 'login'} type="fade" duration={200}>
         <LoginScreen
-          onLoginSuccess={handleLoginSuccess}
-          onGoToSignup={() => {
-            setGameState('signup');
-            gameRef.current.state = 'signup';
-          }}
           onGoToAdminLogin={() => {
-            setGameState('adminDashboard');
-            gameRef.current.state = 'adminDashboard';
+            setGameState('adminDashboard' as GameState);
+            gameRef.current.state = 'adminDashboard' as GameState;
           }}
         />
       </ScreenTransition>

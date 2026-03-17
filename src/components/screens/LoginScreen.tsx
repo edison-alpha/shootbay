@@ -1,52 +1,26 @@
 import React, { useState } from 'react';
-import { login } from '../../lib/auth';
-import type { AuthUser } from '../../lib/auth';
+import { loginWithGoogle } from '../../lib/auth';
 import arenaBg from '../../assets/arena_background.webp';
 
 interface LoginScreenProps {
-  onLoginSuccess: (user: AuthUser) => void;
-  onGoToSignup: () => void;
   onGoToAdminLogin: () => void;
 }
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({
-  onLoginSuccess,
-  onGoToSignup,
   onGoToAdminLogin,
 }) => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
 
-  const handleLogin = async () => {
+  const handleGoogleLogin = async () => {
     setError('');
-
-    if (!email.trim()) {
-      setError('Email is required');
-      return;
-    }
-    if (!password) {
-      setError('Password is required');
-      return;
-    }
-
-    setLoading(true);
-    const result = await login(email, password);
-    setLoading(false);
-
+    setGoogleLoading(true);
+    const result = await loginWithGoogle();
     if (!result.success) {
-      setError(result.error || 'Login failed');
-      return;
+      setGoogleLoading(false);
+      setError(result.error || 'Google login failed');
     }
-
-    if (result.user) {
-      onLoginSuccess(result.user);
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') handleLogin();
+    // If successful, the page redirects to Google — no further action needed.
   };
 
   return (
@@ -71,96 +45,70 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
           }}
         >
           {/* Header */}
-          <div className="text-center mb-5">
-            <div className="text-4xl mb-2">🥟</div>
+          <div className="text-center mb-6">
+            <div className="text-5xl mb-2">🥟</div>
             <h1
-              className="text-xl font-black text-amber-200 tracking-wide"
+              className="text-2xl font-black text-amber-200 tracking-wide"
               style={{ textShadow: '0 2px 8px rgba(0,0,0,0.5)' }}
             >
               DIMSUM DASH
             </h1>
             <p className="text-[10px] text-amber-500/60 uppercase tracking-widest font-bold mt-1">
-              Welcome Back
+              The Ultimate Dimsum Adventure
             </p>
-          </div>
-
-          {/* Email */}
-          <div className="mb-3">
-            <label className="text-[9px] font-bold text-amber-500/70 uppercase tracking-wider mb-1 block">
-              Email
-            </label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="your.email@gmail.com"
-              className="w-full px-3 py-2.5 rounded-lg text-sm font-bold text-amber-200 placeholder-amber-800/40 outline-none"
-              style={{
-                background: 'rgba(0,0,0,0.4)',
-                border: '1px solid rgba(180,140,60,0.2)',
-              }}
-              autoComplete="email"
-            />
-          </div>
-
-          {/* Password */}
-          <div className="mb-4">
-            <label className="text-[9px] font-bold text-amber-500/70 uppercase tracking-wider mb-1 block">
-              Password
-            </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="••••••••"
-              className="w-full px-3 py-2.5 rounded-lg text-sm font-bold text-amber-200 placeholder-amber-800/40 outline-none"
-              style={{
-                background: 'rgba(0,0,0,0.4)',
-                border: '1px solid rgba(180,140,60,0.2)',
-              }}
-              autoComplete="current-password"
-            />
           </div>
 
           {/* Error */}
           {error && (
             <div
-              className="rounded-lg px-3 py-2 mb-3"
+              className="rounded-lg px-3 py-2 mb-4"
               style={{ background: 'rgba(220,38,38,0.15)', border: '1px solid rgba(220,38,38,0.3)' }}
             >
               <p className="text-xs text-red-400 text-center font-bold">{error}</p>
             </div>
           )}
 
-          {/* Submit */}
+          {/* Google Sign-In Button */}
           <button
-            onClick={handleLogin}
-            disabled={loading}
-            className="w-full py-3 rounded-xl text-sm font-black uppercase tracking-widest transition active:scale-[0.97] mb-3"
+            onClick={handleGoogleLogin}
+            disabled={googleLoading}
+            className="w-full py-3 rounded-xl text-sm font-bold transition active:scale-[0.97] mb-4 flex items-center justify-center gap-3"
             style={{
-              background: loading
-                ? 'rgba(60,40,20,0.5)'
-                : 'linear-gradient(180deg, #b45309 0%, #78350f 100%)',
-              border: `2px solid ${loading ? 'rgba(80,60,30,0.2)' : 'rgba(251,191,36,0.4)'}`,
-              boxShadow: loading ? 'none' : '0 4px 12px rgba(180,100,10,0.3), inset 0 1px 0 rgba(255,215,0,0.15)',
-              color: loading ? 'rgba(180,140,60,0.3)' : '#fef3c7',
-              textShadow: loading ? 'none' : '0 2px 4px rgba(0,0,0,0.5)',
+              background: googleLoading ? 'rgba(60,60,60,0.5)' : 'rgba(255,255,255,0.95)',
+              border: '2px solid rgba(200,200,200,0.3)',
+              boxShadow: googleLoading ? 'none' : '0 4px 16px rgba(0,0,0,0.25)',
+              color: googleLoading ? '#999' : '#333',
             }}
           >
-            {loading ? 'Logging in...' : 'Login'}
+            {!googleLoading && (
+              <svg width="20" height="20" viewBox="0 0 48 48">
+                <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+                <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+                <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
+                <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+              </svg>
+            )}
+            {googleLoading ? (
+              <span className="flex items-center gap-2">
+                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                Redirecting to Google...
+              </span>
+            ) : (
+              'Continue with Google'
+            )}
           </button>
 
-          {/* Links */}
-          <div className="text-center space-y-2">
-            <button
-              onClick={onGoToSignup}
-              className="text-xs text-amber-400/70 hover:text-amber-300 transition"
-            >
-              Don't have an account? <span className="font-bold underline">Sign Up</span>
-            </button>
-            <br />
+          {/* Info text */}
+          <p className="text-[10px] text-amber-600/40 text-center mb-4 leading-relaxed">
+            Sign in or create an account instantly with your Google account.
+            No passwords needed!
+          </p>
+
+          {/* Admin Access */}
+          <div className="text-center pt-2 border-t" style={{ borderColor: 'rgba(180,140,60,0.15)' }}>
             <button
               onClick={onGoToAdminLogin}
               className="text-[10px] text-amber-600/40 hover:text-amber-500/60 transition"
