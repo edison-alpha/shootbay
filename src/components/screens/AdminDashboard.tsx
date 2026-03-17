@@ -36,6 +36,179 @@ interface AdminDashboardProps {
   onBack: () => void;
 }
 
+// ─── Shared UI Components ─────────────────────────────────────────────────────
+
+/** Inline spinner SVG for buttons */
+const Spinner: React.FC<{ className?: string }> = ({ className = 'h-4 w-4' }) => (
+  <svg className={`animate-spin ${className}`} viewBox="0 0 24 24" fill="none">
+    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+  </svg>
+);
+
+/** Action button with built-in spinner */
+const ActionBtn: React.FC<{
+  onClick: () => void;
+  loading?: boolean;
+  disabled?: boolean;
+  variant?: 'primary' | 'danger' | 'secondary' | 'success' | 'purple';
+  children: React.ReactNode;
+  className?: string;
+}> = ({ onClick, loading, disabled, variant = 'primary', children, className = '' }) => {
+  const variantStyles: Record<string, string> = {
+    primary: 'bg-blue-600 hover:bg-blue-500 text-white',
+    danger: 'bg-red-600 hover:bg-red-500 text-white',
+    secondary: 'bg-gray-800 hover:bg-gray-700 text-gray-300',
+    success: 'bg-emerald-600 hover:bg-emerald-500 text-white',
+    purple: 'bg-purple-600 hover:bg-purple-500 text-white',
+  };
+
+  return (
+    <button
+      onClick={onClick}
+      disabled={loading || disabled}
+      className={`px-4 py-2 rounded-lg text-xs font-bold transition inline-flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed ${variantStyles[variant]} ${className}`}
+    >
+      {loading && <Spinner className="h-3.5 w-3.5" />}
+      {children}
+    </button>
+  );
+};
+
+/** Skeleton loading placeholder */
+const Skeleton: React.FC<{ className?: string }> = ({ className = '' }) => (
+  <div className={`animate-pulse bg-gray-800 rounded-lg ${className}`} />
+);
+
+/** Skeleton card for dashboard stats */
+const SkeletonStatCard: React.FC = () => (
+  <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-4 animate-pulse">
+    <Skeleton className="w-8 h-8 rounded mb-2" />
+    <Skeleton className="h-7 w-16 mb-1" />
+    <Skeleton className="h-3 w-20" />
+  </div>
+);
+
+/** Skeleton row for list items */
+const SkeletonRow: React.FC = () => (
+  <div className="rounded-xl bg-gray-900 border border-gray-800 p-3 flex items-center gap-3 animate-pulse">
+    <Skeleton className="w-10 h-10 rounded-xl flex-shrink-0" />
+    <div className="flex-1 min-w-0 space-y-2">
+      <Skeleton className="h-4 w-40" />
+      <Skeleton className="h-3 w-28" />
+    </div>
+    <div className="flex gap-1">
+      <Skeleton className="w-8 h-8 rounded-lg" />
+      <Skeleton className="w-8 h-8 rounded-lg" />
+    </div>
+  </div>
+);
+
+/** Skeleton content for each tab */
+const SkeletonContent: React.FC<{ tab: AdminTab }> = ({ tab }) => {
+  if (tab === 'dashboard') {
+    return (
+      <div className="grid grid-cols-2 gap-3">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <SkeletonStatCard key={i} />
+        ))}
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between mb-4">
+        <Skeleton className="h-6 w-40" />
+        <Skeleton className="h-9 w-28 rounded-lg" />
+      </div>
+      {Array.from({ length: 4 }).map((_, i) => (
+        <SkeletonRow key={i} />
+      ))}
+    </div>
+  );
+};
+
+// ─── Toast System ─────────────────────────────────────────────────────────────
+
+interface Toast {
+  id: number;
+  type: 'success' | 'error' | 'info' | 'warning';
+  message: string;
+}
+
+type ShowToast = (type: Toast['type'], message: string) => void;
+
+const ToastContainer: React.FC<{ toasts: Toast[]; onDismiss: (id: number) => void }> = ({ toasts, onDismiss }) => {
+  if (toasts.length === 0) return null;
+
+  const iconMap: Record<Toast['type'], string> = {
+    success: '✅',
+    error: '❌',
+    info: 'ℹ️',
+    warning: '⚠️',
+  };
+
+  const colorMap: Record<Toast['type'], string> = {
+    success: 'border-emerald-600/50 bg-emerald-950/90',
+    error: 'border-red-600/50 bg-red-950/90',
+    info: 'border-blue-600/50 bg-blue-950/90',
+    warning: 'border-amber-600/50 bg-amber-950/90',
+  };
+
+  return (
+    <div className="fixed bottom-4 right-4 z-[300] flex flex-col gap-2 max-w-sm pointer-events-none">
+      {toasts.map((toast) => (
+        <div
+          key={toast.id}
+          className={`pointer-events-auto rounded-xl border px-4 py-3 shadow-2xl flex items-start gap-2 animate-slide-in-right ${colorMap[toast.type]}`}
+          onClick={() => onDismiss(toast.id)}
+          role="alert"
+        >
+          <span className="text-base flex-shrink-0 mt-0.5">{iconMap[toast.type]}</span>
+          <p className="text-xs font-medium text-white leading-relaxed">{toast.message}</p>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+// ─── Confirm Modal ────────────────────────────────────────────────────────────
+
+const ConfirmModal: React.FC<{
+  open: boolean;
+  title: string;
+  message: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  variant?: 'danger' | 'primary';
+  loading?: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}> = ({ open, title, message, confirmLabel = 'Confirm', cancelLabel = 'Cancel', variant = 'danger', loading, onConfirm, onCancel }) => {
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-[250] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl p-6 max-w-sm w-full mx-4">
+        <h3 className="text-sm font-black text-white mb-2">{title}</h3>
+        <p className="text-xs text-gray-400 mb-5 leading-relaxed">{message}</p>
+        <div className="flex gap-2 justify-end">
+          <ActionBtn onClick={onCancel} variant="secondary" disabled={loading}>
+            {cancelLabel}
+          </ActionBtn>
+          <ActionBtn
+            onClick={onConfirm}
+            variant={variant === 'danger' ? 'danger' : 'primary'}
+            loading={loading}
+          >
+            {confirmLabel}
+          </ActionBtn>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // AdminDashboard — Full admin panel with login gate
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -79,7 +252,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
               characterId: p.character_id,
             });
           } else if (profile) {
-            // User is logged in but NOT admin
             setLoginError('Access denied. Your account does not have admin privileges.');
           }
         }
@@ -89,7 +261,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
       setSessionChecked(true);
     })();
 
-    // Listen for auth state changes (e.g., after Google OAuth redirect)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN' && session?.user) {
         const { data: profile } = await supabase
@@ -137,7 +308,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
       setLoginLoading(false);
       setLoginError(result.error || 'Google login failed');
     }
-    // If successful, page redirects to Google — auth state change handler will verify admin role
   };
 
   const handleLogout = async () => {
@@ -146,11 +316,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
     onBack();
   };
 
-  // Show loading while checking existing session
   if (!sessionChecked) {
     return (
       <div className="fixed inset-0 z-[200] flex items-center justify-center bg-gradient-to-b from-gray-900 to-gray-800">
-        <div className="text-white text-lg animate-pulse">Checking admin session...</div>
+        <div className="flex flex-col items-center gap-3">
+          <Spinner className="h-8 w-8 text-blue-400" />
+          <p className="text-gray-400 text-sm font-medium">Checking admin session...</p>
+        </div>
       </div>
     );
   }
@@ -215,10 +387,7 @@ const AdminLoginGate: React.FC<{
           )}
           {loading ? (
             <span className="flex items-center gap-2">
-              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-              </svg>
+              <Spinner className="h-4 w-4" />
               Redirecting to Google...
             </span>
           ) : (
@@ -254,33 +423,110 @@ const AdminPanel: React.FC<{ admin: AuthUser; onLogout: () => void }> = ({ admin
   const [players, setPlayers] = useState<Profile[]>([]);
   const [spinPrizes, setSpinPrizes] = useState<SpinWheelPrize[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const refreshTimeoutRef = useRef<number | null>(null);
   const firstLoadRef = useRef(true);
+
+  // Toast state
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const toastIdRef = useRef(0);
+
+  const showToast: ShowToast = useCallback((type, message) => {
+    const id = ++toastIdRef.current;
+    setToasts((prev) => [...prev, { id, type, message }]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 4000);
+  }, []);
+
+  const dismissToast = useCallback((id: number) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  // Confirm modal state
+  const [confirmModal, setConfirmModal] = useState<{
+    open: boolean;
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    variant?: 'danger' | 'primary';
+    loading: boolean;
+    onConfirm: () => Promise<void>;
+  }>({
+    open: false,
+    title: '',
+    message: '',
+    loading: false,
+    onConfirm: async () => {},
+  });
+
+  const showConfirm = useCallback((opts: {
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    variant?: 'danger' | 'primary';
+    onConfirm: () => Promise<void>;
+  }) => {
+    setConfirmModal({
+      open: true,
+      title: opts.title,
+      message: opts.message,
+      confirmLabel: opts.confirmLabel,
+      variant: opts.variant,
+      loading: false,
+      onConfirm: opts.onConfirm,
+    });
+  }, []);
+
+  const handleConfirm = useCallback(async () => {
+    setConfirmModal((prev) => ({ ...prev, loading: true }));
+    try {
+      await confirmModal.onConfirm();
+    } finally {
+      setConfirmModal((prev) => ({ ...prev, open: false, loading: false }));
+    }
+  }, [confirmModal]);
+
+  const closeConfirm = useCallback(() => {
+    if (!confirmModal.loading) {
+      setConfirmModal((prev) => ({ ...prev, open: false }));
+    }
+  }, [confirmModal.loading]);
 
   const refreshData = useCallback(async (options?: { silent?: boolean }) => {
     const silent = options?.silent ?? false;
     if (!silent && firstLoadRef.current) {
       setLoading(true);
     }
-    const [s, p, c, b, pl, sp] = await Promise.all([
-      getDashboardStats(),
-      getAllPrizes(),
-      getAllGreetingCards(),
-      getAllMysteryBoxes(),
-      getAllPlayers(),
-      getAllSpinWheelPrizes(),
-    ]);
-    setStats(s);
-    setPrizes(p);
-    setCards(c);
-    setBoxes(b);
-    setPlayers(pl);
-    setSpinPrizes(sp);
-    if (firstLoadRef.current) {
-      setLoading(false);
-      firstLoadRef.current = false;
+    if (!silent && !firstLoadRef.current) {
+      setRefreshing(true);
     }
-  }, []);
+    try {
+      const [s, p, c, b, pl, sp] = await Promise.all([
+        getDashboardStats(),
+        getAllPrizes(),
+        getAllGreetingCards(),
+        getAllMysteryBoxes(),
+        getAllPlayers(),
+        getAllSpinWheelPrizes(),
+      ]);
+      setStats(s);
+      setPrizes(p);
+      setCards(c);
+      setBoxes(b);
+      setPlayers(pl);
+      setSpinPrizes(sp);
+    } catch (err) {
+      console.error('Failed to refresh data:', err);
+      if (!silent) showToast('error', 'Failed to refresh data');
+    } finally {
+      if (firstLoadRef.current) {
+        setLoading(false);
+        firstLoadRef.current = false;
+      }
+      setRefreshing(false);
+    }
+  }, [showToast]);
 
   useEffect(() => {
     refreshData({ silent: false });
@@ -297,7 +543,6 @@ const AdminPanel: React.FC<{ admin: AuthUser; onLogout: () => void }> = ({ admin
       }, 250);
     };
 
-    // Fallback polling so admin data still refreshes when realtime events are delayed/missed.
     const POLL_INTERVAL_MS = 10000;
     const pollInterval = window.setInterval(() => {
       refreshData({ silent: true }).catch(console.error);
@@ -350,7 +595,9 @@ const AdminPanel: React.FC<{ admin: AuthUser; onLogout: () => void }> = ({ admin
   return (
     <div className="absolute inset-0 z-[200] flex flex-col bg-gray-950 text-white overflow-hidden">
       {/* ── Top Bar ── */}
-      <div className="flex items-center justify-between px-4 py-3 bg-gray-900 border-b border-gray-800">
+      <div className="flex items-center justify-between px-4 py-3 bg-gray-900 border-b border-gray-800"
+        style={{ paddingTop: 'max(12px, env(safe-area-inset-top, 12px))' }}
+      >
         <div className="flex items-center gap-2">
           <span className="text-lg">🛡️</span>
           <div>
@@ -359,18 +606,16 @@ const AdminPanel: React.FC<{ admin: AuthUser; onLogout: () => void }> = ({ admin
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button
+          <ActionBtn
             onClick={() => refreshData()}
-            className="px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-xs font-bold text-gray-300 transition"
+            loading={refreshing}
+            variant="secondary"
           >
             🔄 Refresh
-          </button>
-          <button
-            onClick={onLogout}
-            className="px-3 py-1.5 rounded-lg bg-red-900/30 hover:bg-red-900/50 text-xs font-bold text-red-400 transition"
-          >
+          </ActionBtn>
+          <ActionBtn onClick={onLogout} variant="danger">
             Logout
-          </button>
+          </ActionBtn>
         </div>
       </div>
 
@@ -394,17 +639,15 @@ const AdminPanel: React.FC<{ admin: AuthUser; onLogout: () => void }> = ({ admin
       {/* ── Content ── */}
       <div className="flex-1 overflow-y-auto p-4">
         {loading ? (
-          <div className="flex items-center justify-center h-40">
-            <div className="text-gray-500 text-sm animate-pulse">Loading...</div>
-          </div>
+          <SkeletonContent tab={activeTab} />
         ) : (
           <>
             {activeTab === 'dashboard' && stats && <DashboardTab stats={stats} />}
             {activeTab === 'prizes' && (
-              <PrizesTab prizes={prizes} adminId={admin.id} onRefresh={refreshData} />
+              <PrizesTab prizes={prizes} adminId={admin.id} onRefresh={refreshData} showToast={showToast} showConfirm={showConfirm} />
             )}
             {activeTab === 'cards' && (
-              <CardsTab cards={cards} adminId={admin.id} onRefresh={refreshData} />
+              <CardsTab cards={cards} adminId={admin.id} onRefresh={refreshData} showToast={showToast} showConfirm={showConfirm} />
             )}
             {activeTab === 'mystery_boxes' && (
               <MysteryBoxTab
@@ -414,15 +657,43 @@ const AdminPanel: React.FC<{ admin: AuthUser; onLogout: () => void }> = ({ admin
                 players={players}
                 adminId={admin.id}
                 onRefresh={refreshData}
+                showToast={showToast}
+                showConfirm={showConfirm}
               />
             )}
             {activeTab === 'spin_wheel' && (
-              <SpinWheelTab spinPrizes={spinPrizes} adminId={admin.id} onRefresh={refreshData} />
+              <SpinWheelTab spinPrizes={spinPrizes} adminId={admin.id} onRefresh={refreshData} showToast={showToast} showConfirm={showConfirm} />
             )}
-            {activeTab === 'players' && <PlayersTab players={players} onRefresh={refreshData} />}
+            {activeTab === 'players' && <PlayersTab players={players} onRefresh={refreshData} showToast={showToast} />}
           </>
         )}
       </div>
+
+      {/* Toast notifications */}
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+
+      {/* Confirm modal */}
+      <ConfirmModal
+        open={confirmModal.open}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        confirmLabel={confirmModal.confirmLabel}
+        variant={confirmModal.variant}
+        loading={confirmModal.loading}
+        onConfirm={handleConfirm}
+        onCancel={closeConfirm}
+      />
+
+      {/* Toast animation styles */}
+      <style>{`
+        @keyframes slide-in-right {
+          from { transform: translateX(100%); opacity: 0; }
+          to { transform: translateX(0); opacity: 1; }
+        }
+        .animate-slide-in-right {
+          animation: slide-in-right 0.3s ease-out;
+        }
+      `}</style>
     </div>
   );
 };
@@ -470,13 +741,22 @@ const StatCard: React.FC<{ icon: string; label: string; value: number; color: st
 // Prizes Tab
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const PrizesTab: React.FC<{ prizes: Prize[]; adminId: string; onRefresh: () => void }> = ({
+const PrizesTab: React.FC<{
+  prizes: Prize[];
+  adminId: string;
+  onRefresh: () => void;
+  showToast: ShowToast;
+  showConfirm: (opts: { title: string; message: string; confirmLabel?: string; variant?: 'danger' | 'primary'; onConfirm: () => Promise<void> }) => void;
+}> = ({
   prizes,
   adminId,
   onRefresh,
+  showToast,
+  showConfirm,
 }) => {
   const [showForm, setShowForm] = useState(false);
   const [editingPrize, setEditingPrize] = useState<Prize | null>(null);
+  const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     name: '',
     description: '',
@@ -493,29 +773,41 @@ const PrizesTab: React.FC<{ prizes: Prize[]; adminId: string; onRefresh: () => v
   };
 
   const handleSave = async () => {
-    if (!form.name.trim()) return;
-
-    if (editingPrize) {
-      await updatePrize(editingPrize.id, {
-        name: form.name,
-        description: form.description,
-        icon: form.icon,
-        type: form.type,
-        value: form.value ? parseInt(form.value) : null,
-        is_active: form.is_active,
-      });
-    } else {
-      await createPrize({
-        name: form.name,
-        description: form.description,
-        icon: form.icon,
-        type: form.type,
-        value: form.value ? parseInt(form.value) : null,
-        is_active: form.is_active,
-      }, adminId);
+    if (!form.name.trim()) {
+      showToast('warning', 'Prize name is required');
+      return;
     }
-    resetForm();
-    onRefresh();
+
+    setSaving(true);
+    try {
+      if (editingPrize) {
+        await updatePrize(editingPrize.id, {
+          name: form.name,
+          description: form.description,
+          icon: form.icon,
+          type: form.type,
+          value: form.value ? parseInt(form.value) : null,
+          is_active: form.is_active,
+        });
+        showToast('success', `Prize "${form.name}" updated successfully`);
+      } else {
+        await createPrize({
+          name: form.name,
+          description: form.description,
+          icon: form.icon,
+          type: form.type,
+          value: form.value ? parseInt(form.value) : null,
+          is_active: form.is_active,
+        }, adminId);
+        showToast('success', `Prize "${form.name}" created successfully`);
+      }
+      resetForm();
+      onRefresh();
+    } catch (err) {
+      showToast('error', `Failed to save prize: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleEdit = (prize: Prize) => {
@@ -531,11 +823,22 @@ const PrizesTab: React.FC<{ prizes: Prize[]; adminId: string; onRefresh: () => v
     setShowForm(true);
   };
 
-  const handleDelete = async (id: string) => {
-    if (confirm('Delete this prize?')) {
-      await deletePrize(id);
-      onRefresh();
-    }
+  const handleDelete = (id: string, name: string) => {
+    showConfirm({
+      title: 'Delete Prize',
+      message: `Are you sure you want to delete "${name}"? This action cannot be undone.`,
+      confirmLabel: 'Delete',
+      variant: 'danger',
+      onConfirm: async () => {
+        try {
+          await deletePrize(id);
+          showToast('success', `Prize "${name}" deleted`);
+          onRefresh();
+        } catch (err) {
+          showToast('error', `Failed to delete prize: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        }
+      },
+    });
   };
 
   const prizeTypes = [
@@ -546,12 +849,9 @@ const PrizesTab: React.FC<{ prizes: Prize[]; adminId: string; onRefresh: () => v
     <div>
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-bold">🎁 Prizes ({prizes.length})</h2>
-        <button
-          onClick={() => { resetForm(); setShowForm(true); }}
-          className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-xs font-bold transition"
-        >
+        <ActionBtn onClick={() => { resetForm(); setShowForm(true); }} variant="primary">
           + New Prize
-        </button>
+        </ActionBtn>
       </div>
 
       {showForm && (
@@ -622,18 +922,12 @@ const PrizesTab: React.FC<{ prizes: Prize[]; adminId: string; onRefresh: () => v
               <label className="text-xs text-gray-300">Active</label>
             </div>
             <div className="flex gap-2">
-              <button
-                onClick={handleSave}
-                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-xs font-bold transition"
-              >
+              <ActionBtn onClick={handleSave} loading={saving} variant="primary">
                 {editingPrize ? 'Update' : 'Create'}
-              </button>
-              <button
-                onClick={resetForm}
-                className="px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-xs font-bold text-gray-300 transition"
-              >
+              </ActionBtn>
+              <ActionBtn onClick={resetForm} variant="secondary" disabled={saving}>
                 Cancel
-              </button>
+              </ActionBtn>
             </div>
           </div>
         </div>
@@ -656,7 +950,7 @@ const PrizesTab: React.FC<{ prizes: Prize[]; adminId: string; onRefresh: () => v
             </div>
             <div className="flex gap-1">
               <button onClick={() => handleEdit(prize)} className="p-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-xs transition">✏️</button>
-              <button onClick={() => handleDelete(prize.id)} className="p-1.5 rounded-lg bg-red-900/20 hover:bg-red-900/40 text-xs transition">🗑️</button>
+              <button onClick={() => handleDelete(prize.id, prize.name)} className="p-1.5 rounded-lg bg-red-900/20 hover:bg-red-900/40 text-xs transition">🗑️</button>
             </div>
           </div>
         ))}
@@ -670,14 +964,23 @@ const PrizesTab: React.FC<{ prizes: Prize[]; adminId: string; onRefresh: () => v
 // Greeting Cards Tab
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const CardsTab: React.FC<{ cards: GreetingCard[]; adminId: string; onRefresh: () => void }> = ({
+const CardsTab: React.FC<{
+  cards: GreetingCard[];
+  adminId: string;
+  onRefresh: () => void;
+  showToast: ShowToast;
+  showConfirm: (opts: { title: string; message: string; confirmLabel?: string; variant?: 'danger' | 'primary'; onConfirm: () => Promise<void> }) => void;
+}> = ({
   cards,
   adminId,
   onRefresh,
+  showToast,
+  showConfirm,
 }) => {
   const DEFAULT_BIRTHDAY_MESSAGE = 'Selamat Ulang Tahun! 🎉🎂\n\nSemoga di hari yang spesial ini, semua harapan dan impianmu terwujud. Kamu adalah orang yang luar biasa dan dunia beruntung memilikimu.\n\nTerus bersinar dan jangan pernah berhenti bermimpi! ✨\n\nWith love and warm wishes! 💝';
   const [showForm, setShowForm] = useState(false);
   const [editingCard, setEditingCard] = useState<GreetingCard | null>(null);
+  const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     title: '🎂 Birthday Card',
     message: DEFAULT_BIRTHDAY_MESSAGE,
@@ -701,15 +1004,27 @@ const CardsTab: React.FC<{ cards: GreetingCard[]; adminId: string; onRefresh: ()
   };
 
   const handleSave = async () => {
-    if (!form.title.trim() || !form.message.trim()) return;
-
-    if (editingCard) {
-      await updateGreetingCard(editingCard.id, form);
-    } else {
-      await createGreetingCard(form, adminId);
+    if (!form.title.trim() || !form.message.trim()) {
+      showToast('warning', 'Title and message are required');
+      return;
     }
-    resetForm();
-    onRefresh();
+
+    setSaving(true);
+    try {
+      if (editingCard) {
+        await updateGreetingCard(editingCard.id, form);
+        showToast('success', `Card "${form.title}" updated successfully`);
+      } else {
+        await createGreetingCard(form, adminId);
+        showToast('success', `Card "${form.title}" created successfully`);
+      }
+      resetForm();
+      onRefresh();
+    } catch (err) {
+      showToast('error', `Failed to save card: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleEdit = (card: GreetingCard) => {
@@ -725,11 +1040,22 @@ const CardsTab: React.FC<{ cards: GreetingCard[]; adminId: string; onRefresh: ()
     setShowForm(true);
   };
 
-  const handleDelete = async (id: string) => {
-    if (confirm('Delete this greeting card?')) {
-      await deleteGreetingCard(id);
-      onRefresh();
-    }
+  const handleDelete = (id: string, title: string) => {
+    showConfirm({
+      title: 'Delete Greeting Card',
+      message: `Are you sure you want to delete "${title}"? This action cannot be undone.`,
+      confirmLabel: 'Delete',
+      variant: 'danger',
+      onConfirm: async () => {
+        try {
+          await deleteGreetingCard(id);
+          showToast('success', `Card "${title}" deleted`);
+          onRefresh();
+        } catch (err) {
+          showToast('error', `Failed to delete card: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        }
+      },
+    });
   };
 
   const templateStyles = ['default', 'birthday', 'celebration', 'elegant', 'fun'];
@@ -738,12 +1064,9 @@ const CardsTab: React.FC<{ cards: GreetingCard[]; adminId: string; onRefresh: ()
     <div>
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-bold">💌 Greeting Cards ({cards.length})</h2>
-        <button
-          onClick={() => { resetForm(); setShowForm(true); }}
-          className="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-xs font-bold transition"
-        >
+        <ActionBtn onClick={() => { resetForm(); setShowForm(true); }} variant="purple">
           + New Card
-        </button>
+        </ActionBtn>
       </div>
 
       {showForm && (
@@ -826,12 +1149,12 @@ const CardsTab: React.FC<{ cards: GreetingCard[]; adminId: string; onRefresh: ()
             </div>
 
             <div className="flex gap-2">
-              <button onClick={handleSave} className="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-xs font-bold transition">
+              <ActionBtn onClick={handleSave} loading={saving} variant="purple">
                 {editingCard ? 'Update' : 'Create'}
-              </button>
-              <button onClick={resetForm} className="px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-xs font-bold text-gray-300 transition">
+              </ActionBtn>
+              <ActionBtn onClick={resetForm} variant="secondary" disabled={saving}>
                 Cancel
-              </button>
+              </ActionBtn>
             </div>
           </div>
         </div>
@@ -855,7 +1178,7 @@ const CardsTab: React.FC<{ cards: GreetingCard[]; adminId: string; onRefresh: ()
             </div>
             <div className="flex gap-1 flex-shrink-0">
               <button onClick={() => handleEdit(card)} className="p-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-xs transition">✏️</button>
-              <button onClick={() => handleDelete(card.id)} className="p-1.5 rounded-lg bg-red-900/20 hover:bg-red-900/40 text-xs transition">🗑️</button>
+              <button onClick={() => handleDelete(card.id, card.title)} className="p-1.5 rounded-lg bg-red-900/20 hover:bg-red-900/40 text-xs transition">🗑️</button>
             </div>
           </div>
         ))}
@@ -876,11 +1199,14 @@ const MysteryBoxTab: React.FC<{
   players: Profile[];
   adminId: string;
   onRefresh: () => void;
-}> = ({ boxes, prizes, cards, players, adminId, onRefresh }) => {
+  showToast: ShowToast;
+  showConfirm: (opts: { title: string; message: string; confirmLabel?: string; variant?: 'danger' | 'primary'; onConfirm: () => Promise<void> }) => void;
+}> = ({ boxes, prizes, cards, players, adminId, onRefresh, showToast, showConfirm }) => {
   const [showForm, setShowForm] = useState(false);
   const [editingBox, setEditingBox] = useState<MysteryBox | null>(null);
   const [recipientMode, setRecipientMode] = useState<'single' | 'selected' | 'all'>('single');
   const [selectedPlayerIds, setSelectedPlayerIds] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     name: '',
     description: '',
@@ -917,11 +1243,116 @@ const MysteryBoxTab: React.FC<{
     ));
   };
 
-  const handleCreate = async () => {
-    if (!form.name.trim()) return;
+  const activePlayers = players.filter((p) => p.role === 'player');
 
-    if (editingBox) {
-      const updated = await updateMysteryBox(editingBox.id, {
+  const getPlayerName = (userId: string | null) => {
+    if (!userId) return 'Unassigned';
+    const player = players.find((p) => p.id === userId);
+    return player ? `${player.display_name || player.username} (${player.game_user_id})` : userId.slice(0, 8);
+  };
+
+  const getPrizeName = (prizeId: string | null) => {
+    if (!prizeId) return 'None';
+    const prize = prizes.find((p) => p.id === prizeId);
+    return prize ? `${prize.icon} ${prize.name}` : 'Unknown';
+  };
+
+  const getCardName = (cardId: string | null) => {
+    if (!cardId) return 'None';
+    const card = cards.find((c) => c.id === cardId);
+    return card ? `${card.icon} ${card.title}` : 'Unknown';
+  };
+
+  const handleCreate = async () => {
+    if (!form.name.trim()) {
+      showToast('warning', 'Box name is required');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      if (editingBox) {
+        const updated = await updateMysteryBox(editingBox.id, {
+          name: form.name,
+          description: form.description,
+          prize_id: form.prize_id || null,
+          greeting_card_id: form.greeting_card_id || null,
+          include_spin_wheel: form.include_spin_wheel,
+          spin_count: form.include_spin_wheel ? Math.max(1, parseInt(form.spin_count || '1', 10) || 1) : 0,
+          assigned_to: form.assigned_to || null,
+          custom_message: form.custom_message || null,
+          status: form.assigned_to ? 'delivered' : 'pending',
+          updated_at: new Date().toISOString(),
+        });
+        if (!updated) {
+          showToast('error', 'Failed to update mystery box. Make sure the box is not opened and policies allow update.');
+          setSaving(false);
+          return;
+        }
+        showToast('success', `Mystery box "${form.name}" updated`);
+        resetForm();
+        onRefresh();
+        return;
+      }
+
+      const allPlayerIds = activePlayers.map((p) => p.id);
+
+      if (recipientMode === 'all') {
+        const created = await createMysteryBoxesBulk({
+          name: form.name,
+          description: form.description,
+          prize_id: form.prize_id || null,
+          greeting_card_id: form.greeting_card_id || null,
+          include_spin_wheel: form.include_spin_wheel,
+          spin_count: form.include_spin_wheel ? Math.max(1, parseInt(form.spin_count || '1', 10) || 1) : 0,
+          custom_message: form.custom_message || null,
+        }, allPlayerIds, adminId);
+
+        if (created.length > 0) {
+          showToast('success', `Created ${created.length} mystery boxes for all players`);
+        } else {
+          showToast('error', 'Failed to create mystery boxes');
+        }
+
+        resetForm();
+        onRefresh();
+        return;
+      }
+
+      if (recipientMode === 'selected') {
+        if (selectedPlayerIds.length === 0) {
+          showToast('warning', 'Please select at least one player');
+          setSaving(false);
+          return;
+        }
+        const created = await createMysteryBoxesBulk({
+          name: form.name,
+          description: form.description,
+          prize_id: form.prize_id || null,
+          greeting_card_id: form.greeting_card_id || null,
+          include_spin_wheel: form.include_spin_wheel,
+          spin_count: form.include_spin_wheel ? Math.max(1, parseInt(form.spin_count || '1', 10) || 1) : 0,
+          custom_message: form.custom_message || null,
+        }, selectedPlayerIds, adminId);
+
+        if (created.length > 0) {
+          showToast('success', `Created ${created.length} mystery boxes for selected players`);
+        } else {
+          showToast('error', 'Failed to create mystery boxes');
+        }
+
+        resetForm();
+        onRefresh();
+        return;
+      }
+
+      if (!form.assigned_to) {
+        showToast('warning', 'Please select a player');
+        setSaving(false);
+        return;
+      }
+
+      const created = await createMysteryBox({
         name: form.name,
         description: form.description,
         prize_id: form.prize_id || null,
@@ -930,95 +1361,43 @@ const MysteryBoxTab: React.FC<{
         spin_count: form.include_spin_wheel ? Math.max(1, parseInt(form.spin_count || '1', 10) || 1) : 0,
         assigned_to: form.assigned_to || null,
         custom_message: form.custom_message || null,
-        status: form.assigned_to ? 'delivered' : 'pending',
-        updated_at: new Date().toISOString(),
-      });
-      if (!updated) {
-        alert('Gagal update mystery box. Pastikan box belum opened dan policy Supabase mengizinkan update.');
+      }, adminId);
+      if (!created) {
+        showToast('error', 'Failed to create mystery box. Check Supabase policies.');
+        setSaving(false);
         return;
       }
+      showToast('success', `Mystery box "${form.name}" created with code: ${created.redemption_code}`);
       resetForm();
       onRefresh();
-      return;
+    } catch (err) {
+      showToast('error', `Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setSaving(false);
     }
-
-    const allPlayerIds = activePlayers.map((p) => p.id);
-
-    if (recipientMode === 'all') {
-      const created = await createMysteryBoxesBulk({
-        name: form.name,
-        description: form.description,
-        prize_id: form.prize_id || null,
-        greeting_card_id: form.greeting_card_id || null,
-        include_spin_wheel: form.include_spin_wheel,
-        spin_count: form.include_spin_wheel ? Math.max(1, parseInt(form.spin_count || '1', 10) || 1) : 0,
-        custom_message: form.custom_message || null,
-      }, allPlayerIds, adminId);
-
-      if (created.length > 0) {
-        alert(`Created ${created.length} mystery boxes.\n\nCodes:\n${created.map((box) => `${getPlayerName(box.assigned_to)} → ${box.redemption_code}`).join('\n')}`);
-      }
-
-      resetForm();
-      onRefresh();
-      return;
-    }
-
-    if (recipientMode === 'selected') {
-      const created = await createMysteryBoxesBulk({
-        name: form.name,
-        description: form.description,
-        prize_id: form.prize_id || null,
-        greeting_card_id: form.greeting_card_id || null,
-        include_spin_wheel: form.include_spin_wheel,
-        spin_count: form.include_spin_wheel ? Math.max(1, parseInt(form.spin_count || '1', 10) || 1) : 0,
-        custom_message: form.custom_message || null,
-      }, selectedPlayerIds, adminId);
-
-      if (created.length > 0) {
-        alert(`Created ${created.length} mystery boxes.\n\nCodes:\n${created.map((box) => `${getPlayerName(box.assigned_to)} → ${box.redemption_code}`).join('\n')}`);
-      }
-
-      resetForm();
-      onRefresh();
-      return;
-    }
-
-    if (!form.assigned_to) return;
-
-    const created = await createMysteryBox({
-      name: form.name,
-      description: form.description,
-      prize_id: form.prize_id || null,
-      greeting_card_id: form.greeting_card_id || null,
-      include_spin_wheel: form.include_spin_wheel,
-      spin_count: form.include_spin_wheel ? Math.max(1, parseInt(form.spin_count || '1', 10) || 1) : 0,
-      assigned_to: form.assigned_to || null,
-      custom_message: form.custom_message || null,
-    }, adminId);
-    if (!created) {
-      alert('Gagal membuat mystery box. Cek policy/permission di Supabase.');
-      return;
-    }
-    resetForm();
-    onRefresh();
   };
 
-  const handleDelete = async (id: string) => {
-    const target = boxes.find((b) => b.id === id);
-    if (target?.status === 'opened') {
-      alert('Opened box tidak bisa dihapus. Hanya box delivered/pending/expired yang bisa dihapus.');
+  const handleDelete = (id: string, name: string, status: string) => {
+    if (status === 'opened') {
+      showToast('warning', 'Opened boxes cannot be deleted. Only delivered/pending/expired boxes can be deleted.');
       return;
     }
 
-    if (confirm('Delete this mystery box?')) {
-      const ok = await deleteMysteryBox(id);
-      if (!ok) {
-        alert('Gagal menghapus mystery box. Cek policy/permission di Supabase.');
-        return;
-      }
-      onRefresh();
-    }
+    showConfirm({
+      title: 'Delete Mystery Box',
+      message: `Are you sure you want to delete "${name}"? This action cannot be undone.`,
+      confirmLabel: 'Delete',
+      variant: 'danger',
+      onConfirm: async () => {
+        const ok = await deleteMysteryBox(id);
+        if (!ok) {
+          showToast('error', 'Failed to delete mystery box. Check Supabase policies.');
+          return;
+        }
+        showToast('success', `Mystery box "${name}" deleted`);
+        onRefresh();
+      },
+    });
   };
 
   const handleEdit = (box: MysteryBox) => {
@@ -1048,28 +1427,11 @@ const MysteryBoxTab: React.FC<{
       updated_at: new Date().toISOString(),
     });
     if (!updated) {
-      alert('Gagal mengubah status box. Cek policy/permission di Supabase.');
+      showToast('error', 'Failed to toggle box status. Check Supabase policies.');
       return;
     }
+    showToast('info', `Box status changed to "${nextStatus}"`);
     onRefresh();
-  };
-
-  const getPlayerName = (userId: string | null) => {
-    if (!userId) return 'Unassigned';
-    const player = players.find((p) => p.id === userId);
-    return player ? `${player.display_name || player.username} (${player.game_user_id})` : userId.slice(0, 8);
-  };
-
-  const getPrizeName = (prizeId: string | null) => {
-    if (!prizeId) return 'None';
-    const prize = prizes.find((p) => p.id === prizeId);
-    return prize ? `${prize.icon} ${prize.name}` : 'Unknown';
-  };
-
-  const getCardName = (cardId: string | null) => {
-    if (!cardId) return 'None';
-    const card = cards.find((c) => c.id === cardId);
-    return card ? `${card.icon} ${card.title}` : 'Unknown';
   };
 
   const statusColors: Record<string, string> = {
@@ -1079,18 +1441,13 @@ const MysteryBoxTab: React.FC<{
     expired: 'bg-red-900/30 text-red-400',
   };
 
-  const activePlayers = players.filter((p) => p.role === 'player');
-
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-bold">📦 Mystery Boxes ({boxes.length})</h2>
-        <button
-          onClick={() => { resetForm(); setShowForm(true); }}
-          className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-bold transition"
-        >
+        <ActionBtn onClick={() => { resetForm(); setShowForm(true); }} variant="success">
           + New Box
-        </button>
+        </ActionBtn>
       </div>
 
       {showForm && (
@@ -1297,12 +1654,12 @@ const MysteryBoxTab: React.FC<{
               />
             </div>
             <div className="flex gap-2">
-              <button onClick={handleCreate} className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-bold transition">
+              <ActionBtn onClick={handleCreate} loading={saving} variant="success">
                 {editingBox ? 'Update Box' : 'Generate Code & Send'}
-              </button>
-              <button onClick={resetForm} className="px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-xs font-bold text-gray-300 transition">
+              </ActionBtn>
+              <ActionBtn onClick={resetForm} variant="secondary" disabled={saving}>
                 Cancel
-              </button>
+              </ActionBtn>
             </div>
           </div>
         </div>
@@ -1335,7 +1692,7 @@ const MysteryBoxTab: React.FC<{
                   {box.status === 'expired' ? '▶️' : '⏸️'}
                 </button>
                 <button onClick={() => handleEdit(box)} className="p-1 rounded bg-gray-800 hover:bg-gray-700 text-xs transition">✏️</button>
-                <button onClick={() => handleDelete(box.id)} className="p-1 rounded bg-red-900/20 hover:bg-red-900/40 text-xs transition">🗑️</button>
+                <button onClick={() => handleDelete(box.id, box.name || 'Unnamed', box.status)} className="p-1 rounded bg-red-900/20 hover:bg-red-900/40 text-xs transition">🗑️</button>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-1 text-[10px]">
@@ -1382,7 +1739,9 @@ const SpinWheelTab: React.FC<{
   spinPrizes: SpinWheelPrize[];
   adminId: string;
   onRefresh: () => void;
-}> = ({ spinPrizes, adminId, onRefresh }) => {
+  showToast: ShowToast;
+  showConfirm: (opts: { title: string; message: string; confirmLabel?: string; variant?: 'danger' | 'primary'; onConfirm: () => Promise<void> }) => void;
+}> = ({ spinPrizes, adminId, onRefresh, showToast, showConfirm }) => {
   const [showForm, setShowForm] = useState(false);
   const [editingPrize, setEditingPrize] = useState<SpinWheelPrize | null>(null);
   const [saving, setSaving] = useState(false);
@@ -1413,44 +1772,54 @@ const SpinWheelTab: React.FC<{
   };
 
   const handleSave = async () => {
-    if (!form.name.trim() || !form.label.trim()) return;
+    if (!form.name.trim() || !form.label.trim()) {
+      showToast('warning', 'Name and label are required');
+      return;
+    }
     setSaving(true);
 
-    if (editingPrize) {
-      await updateSpinWheelPrize(editingPrize.id, {
-        name: form.name,
-        label: form.label,
-        description: form.description,
-        icon: form.icon,
-        color: form.color,
-        dark_color: form.dark_color,
-        image_url: form.image_url || null,
-        prize_type: form.prize_type,
-        value: parseInt(form.value) || 0,
-        weight: parseInt(form.weight) || 1,
-        is_active: form.is_active,
-        sort_order: parseInt(form.sort_order) || 0,
-      });
-    } else {
-      await createSpinWheelPrize({
-        name: form.name,
-        label: form.label,
-        description: form.description,
-        icon: form.icon,
-        color: form.color,
-        dark_color: form.dark_color,
-        image_url: form.image_url || null,
-        prize_type: form.prize_type,
-        value: parseInt(form.value) || 0,
-        weight: parseInt(form.weight) || 1,
-        is_active: form.is_active,
-        sort_order: parseInt(form.sort_order) || 0,
-      }, adminId);
-    }
+    try {
+      if (editingPrize) {
+        await updateSpinWheelPrize(editingPrize.id, {
+          name: form.name,
+          label: form.label,
+          description: form.description,
+          icon: form.icon,
+          color: form.color,
+          dark_color: form.dark_color,
+          image_url: form.image_url || null,
+          prize_type: form.prize_type,
+          value: parseInt(form.value) || 0,
+          weight: parseInt(form.weight) || 1,
+          is_active: form.is_active,
+          sort_order: parseInt(form.sort_order) || 0,
+        });
+        showToast('success', `Spin prize "${form.name}" updated`);
+      } else {
+        await createSpinWheelPrize({
+          name: form.name,
+          label: form.label,
+          description: form.description,
+          icon: form.icon,
+          color: form.color,
+          dark_color: form.dark_color,
+          image_url: form.image_url || null,
+          prize_type: form.prize_type,
+          value: parseInt(form.value) || 0,
+          weight: parseInt(form.weight) || 1,
+          is_active: form.is_active,
+          sort_order: parseInt(form.sort_order) || 0,
+        }, adminId);
+        showToast('success', `Spin prize "${form.name}" created`);
+      }
 
-    setSaving(false);
-    resetForm();
-    onRefresh();
+      resetForm();
+      onRefresh();
+    } catch (err) {
+      showToast('error', `Failed to save spin prize: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleEdit = (prize: SpinWheelPrize) => {
@@ -1472,16 +1841,32 @@ const SpinWheelTab: React.FC<{
     setShowForm(true);
   };
 
-  const handleDelete = async (id: string) => {
-    if (confirm('Delete this spin wheel prize?')) {
-      await deleteSpinWheelPrize(id);
-      onRefresh();
-    }
+  const handleDelete = (id: string, name: string) => {
+    showConfirm({
+      title: 'Delete Spin Prize',
+      message: `Are you sure you want to delete "${name}"? This action cannot be undone.`,
+      confirmLabel: 'Delete',
+      variant: 'danger',
+      onConfirm: async () => {
+        try {
+          await deleteSpinWheelPrize(id);
+          showToast('success', `Spin prize "${name}" deleted`);
+          onRefresh();
+        } catch (err) {
+          showToast('error', `Failed to delete: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        }
+      },
+    });
   };
 
   const handleToggleActive = async (prize: SpinWheelPrize) => {
-    await updateSpinWheelPrize(prize.id, { is_active: !prize.is_active });
-    onRefresh();
+    try {
+      await updateSpinWheelPrize(prize.id, { is_active: !prize.is_active });
+      showToast('info', `"${prize.name}" ${!prize.is_active ? 'activated' : 'deactivated'}`);
+      onRefresh();
+    } catch (err) {
+      showToast('error', `Failed to toggle: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
   };
 
   const activePrizes = spinPrizes.filter(p => p.is_active);
@@ -1496,12 +1881,9 @@ const SpinWheelTab: React.FC<{
             {activePrizes.length} active • {inactivePrizes.length} inactive • Min 3 active needed for wheel
           </p>
         </div>
-        <button
-          onClick={() => { resetForm(); setShowForm(true); }}
-          className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-xs font-bold transition"
-        >
+        <ActionBtn onClick={() => { resetForm(); setShowForm(true); }} variant="primary">
           + New Prize
-        </button>
+        </ActionBtn>
       </div>
 
       {/* Wheel Preview */}
@@ -1652,14 +2034,12 @@ const SpinWheelTab: React.FC<{
 
             {/* Actions */}
             <div className="flex gap-2">
-              <button onClick={handleSave} disabled={saving}
-                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-xs font-bold transition"
-              >
-                {saving ? 'Saving...' : editingPrize ? 'Update' : 'Create'}
-              </button>
-              <button onClick={resetForm}
-                className="px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-xs font-bold text-gray-300 transition"
-              >Cancel</button>
+              <ActionBtn onClick={handleSave} loading={saving} variant="primary">
+                {editingPrize ? 'Update' : 'Create'}
+              </ActionBtn>
+              <ActionBtn onClick={resetForm} variant="secondary" disabled={saving}>
+                Cancel
+              </ActionBtn>
             </div>
           </div>
         </div>
@@ -1717,7 +2097,7 @@ const SpinWheelTab: React.FC<{
               <button onClick={() => handleEdit(prize)}
                 className="p-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-xs transition"
               >✏️</button>
-              <button onClick={() => handleDelete(prize.id)}
+              <button onClick={() => handleDelete(prize.id, prize.name)}
                 className="p-1.5 rounded-lg bg-red-900/20 hover:bg-red-900/40 text-xs transition"
               >🗑️</button>
             </div>
@@ -1735,7 +2115,7 @@ const SpinWheelTab: React.FC<{
 // Players Tab
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const PlayersTab: React.FC<{ players: Profile[]; onRefresh: () => void }> = ({ players, onRefresh }) => {
+const PlayersTab: React.FC<{ players: Profile[]; onRefresh: () => void; showToast: ShowToast }> = ({ players, onRefresh, showToast }) => {
   const [bulkAmount, setBulkAmount] = useState('1');
   const [grantingAll, setGrantingAll] = useState(false);
   const [grantingPlayerId, setGrantingPlayerId] = useState<string | null>(null);
@@ -1745,16 +2125,28 @@ const PlayersTab: React.FC<{ players: Profile[]; onRefresh: () => void }> = ({ p
   const handleGrantAll = async () => {
     const amount = Math.max(1, parseInt(bulkAmount || '1', 10) || 1);
     setGrantingAll(true);
-    await grantTicketsToAllPlayers(amount);
-    setGrantingAll(false);
-    onRefresh();
+    try {
+      await grantTicketsToAllPlayers(amount);
+      showToast('success', `Granted ${amount} ticket(s) to ${playerOnly.length} players`);
+      onRefresh();
+    } catch (err) {
+      showToast('error', `Failed to grant tickets: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setGrantingAll(false);
+    }
   };
 
-  const handleGrantOne = async (playerId: string, amount: number) => {
+  const handleGrantOne = async (playerId: string, playerName: string, amount: number) => {
     setGrantingPlayerId(playerId);
-    await grantTicketsToPlayer(playerId, amount);
-    setGrantingPlayerId(null);
-    onRefresh();
+    try {
+      await grantTicketsToPlayer(playerId, amount);
+      showToast('success', `Granted ${amount} ticket(s) to ${playerName}`);
+      onRefresh();
+    } catch (err) {
+      showToast('error', `Failed to grant tickets: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setGrantingPlayerId(null);
+    }
   };
 
   return (
@@ -1771,13 +2163,14 @@ const PlayersTab: React.FC<{ players: Profile[]; onRefresh: () => void }> = ({ p
             onChange={(e) => setBulkAmount(e.target.value)}
             className="w-24 px-2 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm outline-none"
           />
-          <button
+          <ActionBtn
             onClick={handleGrantAll}
-            disabled={grantingAll || playerOnly.length === 0}
-            className="px-3 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-xs font-black transition"
+            loading={grantingAll}
+            disabled={playerOnly.length === 0}
+            variant="purple"
           >
-            {grantingAll ? 'Sending...' : `Gift to All (${playerOnly.length})`}
-          </button>
+            Gift to All ({playerOnly.length})
+          </ActionBtn>
         </div>
       </div>
 
@@ -1812,10 +2205,11 @@ const PlayersTab: React.FC<{ players: Profile[]; onRefresh: () => void }> = ({ p
                 {[1, 3, 5].map((amt) => (
                   <button
                     key={amt}
-                    onClick={() => handleGrantOne(player.id, amt)}
+                    onClick={() => handleGrantOne(player.id, player.display_name || player.username, amt)}
                     disabled={grantingPlayerId === player.id || grantingAll}
-                    className="px-2 py-1 rounded-md bg-emerald-700/50 hover:bg-emerald-600/60 disabled:opacity-50 text-[10px] font-bold"
+                    className="px-2 py-1 rounded-md bg-emerald-700/50 hover:bg-emerald-600/60 disabled:opacity-50 text-[10px] font-bold inline-flex items-center gap-1"
                   >
+                    {grantingPlayerId === player.id && <Spinner className="h-3 w-3" />}
                     +{amt} 🎫
                   </button>
                 ))}
