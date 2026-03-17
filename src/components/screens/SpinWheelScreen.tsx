@@ -679,7 +679,13 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
           background: 'linear-gradient(180deg, rgba(62,40,20,0.9) 0%, transparent 100%)',
         }}
       >
-        <button onClick={onBack} className="text-amber-400 font-bold text-sm active:scale-90 transition">← Back</button>
+        <button
+          onClick={onBack}
+          disabled={phase === 'summary'}
+          className="text-amber-400 font-bold text-sm active:scale-90 transition disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          ← Back
+        </button>
         <h1 className="text-lg font-black text-amber-100" style={{ textShadow: '0 2px 6px rgba(0,0,0,0.7)' }}>
           {phase === 'card' ? '🎂 Special Gift' : '🎰 Lucky Spin'}
         </h1>
@@ -955,10 +961,6 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
             >
               {sendingWA ? '🤖 Menyiapkan pesan AI...' : '🎫 Claim Hadiah'}
             </button>
-
-            <button onClick={onBack} className="mt-2 text-xs text-amber-500/60 underline">
-              Skip for now
-            </button>
           </div>
         )}
 
@@ -1021,10 +1023,9 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
       </div>
 
       {phase === 'summary' && showClaimModal && (
-        <div className="absolute inset-0 z-30 flex items-end justify-center px-3 py-3 sm:items-center">
+        <div className="absolute inset-0 z-[80] flex items-end justify-center px-3 py-3 sm:items-center">
           <div
-            className="absolute inset-0 bg-black/70"
-            onClick={() => !sendingWA && setShowClaimModal(false)}
+            className="absolute inset-0 bg-black/80"
           />
 
           <div
@@ -1036,7 +1037,8 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
             }}
           >
             <h3 className="text-base font-black text-emerald-300 mb-1">🎫 Claim Hadiah Lucky Spin</h3>
-            <p className="text-[10px] text-emerald-200/70 mb-3">Pesan WA akan digenerate AI dan siap kirim ke admin.</p>
+            <p className="text-[10px] text-emerald-200/70 mb-1">Pesan WA akan digenerate AI dan siap kirim ke admin.</p>
+            <p className="text-[10px] text-amber-300/90 mb-3 font-bold">Langkah ini wajib. Card tidak bisa ditutup sebelum klik claim.</p>
 
             <div className="mb-3 rounded-lg p-2"
               style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.25)' }}
