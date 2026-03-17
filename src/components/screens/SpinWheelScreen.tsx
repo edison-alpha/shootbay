@@ -125,7 +125,10 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
   const availableSpins = storeData.mysteryBoxRewards
     .filter((r) => r.type === 'spin_ticket')
     .reduce((sum, r) => sum + Math.max(0, r.spins || 0), 0);
-  const totalSpins = Math.min(3, availableSpins);
+  // Keep total spins stable for this screen session.
+  // If storeData changes after applying results, we must not recalculate this,
+  // otherwise the flow can reset before summary/claim modal appears.
+  const [totalSpins] = useState(() => Math.min(3, availableSpins));
 
   const [phase, setPhase] = useState<Phase>('loading');
   const [segments, setSegments] = useState<WheelSegment[]>([]);
