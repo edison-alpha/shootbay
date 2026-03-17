@@ -13,6 +13,7 @@ import {
   getAllGreetingCards,
   createMysteryBox,
   createMysteryBoxesBulk,
+  updateMysteryBox,
   deleteMysteryBox,
   getAllMysteryBoxes,
   getAllPlayers,
@@ -807,6 +808,7 @@ const MysteryBoxTab: React.FC<{
   onRefresh: () => void;
 }> = ({ boxes, prizes, cards, players, adminId, onRefresh }) => {
   const [showForm, setShowForm] = useState(false);
+  const [editingBox, setEditingBox] = useState<MysteryBox | null>(null);
   const [recipientMode, setRecipientMode] = useState<'single' | 'selected' | 'all'>('single');
   const [selectedPlayerIds, setSelectedPlayerIds] = useState<string[]>([]);
   const [form, setForm] = useState({
@@ -833,6 +835,7 @@ const MysteryBoxTab: React.FC<{
     });
     setRecipientMode('single');
     setSelectedPlayerIds([]);
+    setEditingBox(null);
     setShowForm(false);
   };
 
@@ -846,6 +849,24 @@ const MysteryBoxTab: React.FC<{
 
   const handleCreate = async () => {
     if (!form.name.trim()) return;
+
+    if (editingBox) {
+      await updateMysteryBox(editingBox.id, {
+        name: form.name,
+        description: form.description,
+        prize_id: form.prize_id || null,
+        greeting_card_id: form.greeting_card_id || null,
+        include_spin_wheel: form.include_spin_wheel,
+        spin_count: form.include_spin_wheel ? Math.max(1, parseInt(form.spin_count || '1', 10) || 1) : 0,
+        assigned_to: form.assigned_to || null,
+        custom_message: form.custom_message || null,
+        status: form.assigned_to ? 'delivered' : 'pending',
+        updated_at: new Date().toISOString(),
+      });
+      resetForm();
+      onRefresh();
+      return;
+    }
 
     const allPlayerIds = activePlayers.map((p) => p.id);
 
@@ -912,6 +933,35 @@ const MysteryBoxTab: React.FC<{
     }
   };
 
+  const handleEdit = (box: MysteryBox) => {
+    setForm({
+      name: box.name || '',
+      description: box.description || '',
+      prize_id: box.prize_id || '',
+      greeting_card_id: box.greeting_card_id || '',
+      include_spin_wheel: !!box.include_spin_wheel,
+      spin_count: String(Math.max(1, box.spin_count || 1)),
+      assigned_to: box.assigned_to || '',
+      custom_message: box.custom_message || '',
+    });
+    setRecipientMode('single');
+    setSelectedPlayerIds([]);
+    setEditingBox(box);
+    setShowForm(true);
+  };
+
+  const handleToggleActive = async (box: MysteryBox) => {
+    if (box.status === 'opened') return;
+    const nextStatus = box.status === 'expired'
+      ? (box.assigned_to ? 'delivered' : 'pending')
+      : 'expired';
+    await updateMysteryBox(box.id, {
+      status: nextStatus,
+      updated_at: new Date().toISOString(),
+    });
+    onRefresh();
+  };
+
   const getPlayerName = (userId: string | null) => {
     if (!userId) return 'Unassigned';
     const player = players.find((p) => p.id === userId);
@@ -953,7 +1003,7 @@ const MysteryBoxTab: React.FC<{
 
       {showForm && (
         <div className="rounded-xl bg-gray-900 border border-gray-800 p-4 mb-4">
-          <h3 className="text-sm font-bold mb-3">Create Mystery Box</h3>
+          <h3 className="text-sm font-bold mb-3">{editingBox ? 'Edit Mystery Box' : 'Create Mystery Box'}</h3>
           <div className="space-y-3">
             <div>
               <label className="text-[10px] font-bold text-gray-400 block mb-1">Box Name</label>
@@ -1047,6 +1097,7 @@ const MysteryBoxTab: React.FC<{
                 )}
               </div>
             </div>
+            {!editingBox && (
             <div>
               <label className="text-[10px] font-bold text-gray-400 block mb-1">Send To</label>
               <div className="grid grid-cols-3 gap-2 mb-2">
@@ -1124,6 +1175,25 @@ const MysteryBoxTab: React.FC<{
                 </div>
               )}
             </div>
+            )}
+
+            {editingBox && (
+              <div>
+                <label className="text-[10px] font-bold text-gray-400 block mb-1">Assigned To</label>
+                <select
+                  value={form.assigned_to}
+                  onChange={(e) => setForm({ ...form, assigned_to: e.target.value })}
+                  className="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm outline-none"
+                >
+                  <option value="">Unassigned</option>
+                  {activePlayers.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.display_name || p.username} ({p.game_user_id})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div>
               <label className="text-[10px] font-bold text-gray-400 block mb-1">Custom Message (optional)</label>
               <textarea
@@ -1136,7 +1206,7 @@ const MysteryBoxTab: React.FC<{
             </div>
             <div className="flex gap-2">
               <button onClick={handleCreate} className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-bold transition">
-                Generate Code & Send
+                {editingBox ? 'Update Box' : 'Generate Code & Send'}
               </button>
               <button onClick={resetForm} className="px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-xs font-bold text-gray-300 transition">
                 Cancel
@@ -1158,6 +1228,21 @@ const MysteryBoxTab: React.FC<{
                 <span className={`text-[9px] px-2 py-0.5 rounded font-bold ${statusColors[box.status] || ''}`}>
                   {box.status}
                 </span>
+                <button
+                  onClick={() => handleToggleActive(box)}
+                  disabled={box.status === 'opened'}
+                  className={`p-1 rounded text-xs transition ${
+                    box.status === 'opened'
+                      ? 'bg-gray-800 text-gray-500 cursor-not-allowed'
+                      : box.status === 'expired'
+                      ? 'bg-emerald-900/20 hover:bg-emerald-900/40'
+                      : 'bg-yellow-900/20 hover:bg-yellow-900/40'
+                  }`}
+                  title={box.status === 'opened' ? 'Opened box cannot be toggled' : box.status === 'expired' ? 'Activate box' : 'Deactivate box'}
+                >
+                  {box.status === 'expired' ? '▶️' : '⏸️'}
+                </button>
+                <button onClick={() => handleEdit(box)} className="p-1 rounded bg-gray-800 hover:bg-gray-700 text-xs transition">✏️</button>
                 <button onClick={() => handleDelete(box.id)} className="p-1 rounded bg-red-900/20 hover:bg-red-900/40 text-xs transition">🗑️</button>
               </div>
             </div>
