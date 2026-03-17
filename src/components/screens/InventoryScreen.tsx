@@ -207,13 +207,16 @@ export const InventoryScreen: React.FC<InventoryScreenProps> = ({
       {/* Header */}
       <div className="relative z-10 flex items-center gap-2 px-3 py-2 mx-2 mb-2"
         style={{
+          paddingLeft: 'max(8px, env(safe-area-inset-left, 8px))',
+          paddingRight: 'max(8px, env(safe-area-inset-right, 8px))',
           background: 'linear-gradient(180deg, rgba(62,40,20,0.92) 0%, rgba(40,26,12,0.95) 100%)',
           borderRadius: '12px', border: '2px solid rgba(180,140,60,0.5)',
           boxShadow: '0 3px 10px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,215,0,0.15)',
         }}
       >
         <button onClick={() => { playClickSound(); onBack(); }}
-          className="w-8 h-8 rounded-lg flex items-center justify-center transition active:scale-90"
+          aria-label="Back"
+          className="w-11 h-11 rounded-lg flex items-center justify-center transition active:scale-95"
           style={{ background: 'linear-gradient(180deg, rgba(80,50,20,0.8), rgba(50,30,10,0.9))', border: '1px solid rgba(180,140,60,0.4)' }}
         >
           <span className="text-amber-400 text-lg font-black">‹</span>

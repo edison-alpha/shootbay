@@ -669,22 +669,35 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
         backgroundImage: `url(${arenaBg})`,
         backgroundSize: 'cover',
         backgroundPosition: 'center',
+        paddingTop: 'max(8px, env(safe-area-inset-top, 8px))',
+        paddingBottom: 'max(8px, env(safe-area-inset-bottom, 8px))',
       }}
     >
       <div className="absolute inset-0 bg-black/55 pointer-events-none" />
 
       {/* Header */}
-      <div className="relative z-10 flex items-center justify-between px-4 py-3"
+      <div className="relative z-10 mx-2 mb-1.5 flex items-center justify-between rounded-xl"
         style={{
-          background: 'linear-gradient(180deg, rgba(62,40,20,0.9) 0%, transparent 100%)',
+          paddingLeft: 'max(8px, env(safe-area-inset-left, 8px))',
+          paddingRight: 'max(8px, env(safe-area-inset-right, 8px))',
+          paddingTop: '8px',
+          paddingBottom: '8px',
+          background: 'linear-gradient(180deg, rgba(62,40,20,0.95) 0%, rgba(40,26,12,0.9) 100%)',
+          border: '1px solid rgba(180,140,60,0.35)',
         }}
       >
         <button
           onClick={onBack}
           disabled={phase === 'summary'}
-          className="text-amber-400 font-bold text-sm active:scale-90 transition disabled:opacity-40 disabled:cursor-not-allowed"
+          aria-label="Back to previous menu"
+          className="flex h-11 w-11 items-center justify-center rounded-lg text-amber-300 transition active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+          style={{
+            background: 'linear-gradient(180deg, rgba(80,50,20,0.9) 0%, rgba(50,30,10,0.95) 100%)',
+            border: '1px solid rgba(180,140,60,0.4)',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.35)',
+          }}
         >
-          ← Back
+          <span className="text-lg font-black">‹</span>
         </button>
         <h1 className="text-lg font-black text-amber-100" style={{ textShadow: '0 2px 6px rgba(0,0,0,0.7)' }}>
           {phase === 'card' ? '🎂 Special Gift' : '🎰 Lucky Spin'}
