@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import bubbleImg from '../../assets/underwater/Neutral/Bubble_2.webp';
+import { generateWishSuggestions } from '../../lib/wishService';
 
 interface WishScreenProps {
   milestone: number;
@@ -17,12 +18,31 @@ interface WishScreenProps {
 export const WishScreen: React.FC<WishScreenProps> = ({ milestone, wishInput, onWishChange, onSubmit }) => {
   const [shake, setShake] = useState(false);
   const [charCount, setCharCount] = useState(0);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
 
   const isValid = wishInput.trim().length >= 3;
 
   useEffect(() => {
     setCharCount(wishInput.trim().length);
   }, [wishInput]);
+
+  // Load AI suggestions on mount
+  useEffect(() => {
+    const loadSuggestions = async () => {
+      setLoadingSuggestions(true);
+      try {
+        const aiSuggestions = await generateWishSuggestions(milestone);
+        setSuggestions(aiSuggestions);
+      } catch (error) {
+        console.error('Failed to load suggestions:', error);
+      } finally {
+        setLoadingSuggestions(false);
+      }
+    };
+
+    loadSuggestions();
+  }, [milestone]);
 
   // Block keyboard shortcuts that might dismiss the overlay
   useEffect(() => {
@@ -145,6 +165,43 @@ export const WishScreen: React.FC<WishScreenProps> = ({ milestone, wishInput, on
             Kamu wajib menulis wish untuk melanjutkan!
           </span>
         </div>
+
+        {/* AI Suggestions */}
+        {suggestions.length > 0 && wishInput.length === 0 && (
+          <div className="relative mb-3">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-2 flex items-center gap-1.5">
+              <span>✨</span>
+              <span>Inspirasi AI</span>
+            </div>
+            <div className="space-y-2">
+              {suggestions.map((suggestion, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => onWishChange(suggestion)}
+                  className="w-full text-left p-2.5 rounded-lg text-xs text-zinc-300 transition-all hover:text-white active:scale-[0.98]"
+                  style={{
+                    background: 'rgba(251,191,36,0.05)',
+                    border: '1px solid rgba(251,191,36,0.15)',
+                  }}
+                >
+                  {suggestion}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {loadingSuggestions && wishInput.length === 0 && (
+          <div className="relative mb-3 flex items-center justify-center gap-2 p-3 rounded-lg"
+            style={{
+              background: 'rgba(251,191,36,0.05)',
+              border: '1px solid rgba(251,191,36,0.1)',
+            }}
+          >
+            <div className="w-3 h-3 border-2 border-yellow-500 border-t-transparent rounded-full animate-spin" />
+            <span className="text-xs text-zinc-400">Memuat inspirasi...</span>
+          </div>
+        )}
 
         {/* Textarea */}
         <div className="relative mb-2">

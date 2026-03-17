@@ -2,8 +2,10 @@ import React, { useState, useEffect, useCallback } from 'react';
 import type { GameStoreData, MysteryBoxReward } from '../../store/gameStore';
 import { saveGameData } from '../../store/gameStore';
 import { redeemMysteryBoxByCode, fetchUserMysteryBoxes, updateMysteryBoxWishFlow } from '../../lib/gameService';
+import { generateBirthdayWishResponse } from '../../lib/wishService';
 import type { MysteryBoxWithDetails } from '../../lib/gameService';
 import { supabase } from '../../lib/supabase';
+import { useMysteryBoxRealtime } from '../../hooks/useMysteryBoxRealtime';
 import chestClosed from '../../assets/underwater/Neutral/æhest_closed.webp';
 import chestAjar from '../../assets/underwater/Neutral/æhest_ajar.webp';
 import chestOpen from '../../assets/underwater/Neutral/æhest_open.webp';
@@ -30,103 +32,6 @@ interface LocalRedeemResult {
   extraRewards?: MysteryBoxReward[];
 }
 
-function zodiacFromDayMonth(day: number, month: number): string {
-  // Western zodiac (simple range mapping)
-  if ((month === 3 && day >= 21) || (month === 4 && day <= 19)) return 'Aries';
-  if ((month === 4 && day >= 20) || (month === 5 && day <= 20)) return 'Taurus';
-  if ((month === 5 && day >= 21) || (month === 6 && day <= 20)) return 'Gemini';
-  if ((month === 6 && day >= 21) || (month === 7 && day <= 22)) return 'Cancer';
-  if ((month === 7 && day >= 23) || (month === 8 && day <= 22)) return 'Leo';
-  if ((month === 8 && day >= 23) || (month === 9 && day <= 22)) return 'Virgo';
-  if ((month === 9 && day >= 23) || (month === 10 && day <= 22)) return 'Libra';
-  if ((month === 10 && day >= 23) || (month === 11 && day <= 21)) return 'Scorpio';
-  if ((month === 11 && day >= 22) || (month === 12 && day <= 21)) return 'Sagittarius';
-  if ((month === 12 && day >= 22) || (month === 1 && day <= 19)) return 'Capricorn';
-  if ((month === 1 && day >= 20) || (month === 2 && day <= 18)) return 'Aquarius';
-  return 'Pisces';
-}
-
-function buildRomanticAIPrompt(wish: string, day: number, month: number, zodiac: string): string {
-  return [
-    'Kamu adalah AI penulis ucapan ulang tahun romantis berbahasa Indonesia.',
-    'Tugas:',
-    '- Buat balasan 5-8 kalimat yang romantis, manis, dan hangat.',
-    '- Wajib selaras dengan isi wish user.',
-    `- User lahir tanggal ${day} bulan ${month} dengan zodiak ${zodiac}.`,
-    '- Sisipkan istilah zodiak secara natural, contoh: "seorang Pisces yang lembut, intuitif, dan penuh empati".',
-    '- Gunakan gaya bahasa puitis ringan, tidak berlebihan, tetap elegan.',
-    '- Tutup dengan kalimat doa + dukungan penuh cinta.',
-    '',
-    `Wish user: "${wish.trim()}"`,
-  ].join('\n');
-}
-
-async function generateAIBirthdayWishResponse(wish: string, day: number, month: number): Promise<{ text: string; prompt: string }> {
-  // Simulated AI response generator (kept local to avoid external key dependency)
-  // Produces a warm personalized message based on player wish input.
-  const cleanWish = wish.trim();
-  const zodiac = zodiacFromDayMonth(day, month);
-  const prompt = buildRomanticAIPrompt(cleanWish, day, month, zodiac);
-  const atxpConnection = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env?.VITE_ATXP_CONNECTION;
-
-  if (atxpConnection) {
-    try {
-      const res = await fetch('https://llm.atxp.ai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${atxpConnection}`,
-        },
-        body: JSON.stringify({
-          model: 'gpt-4.1',
-          messages: [
-            {
-              role: 'system',
-              content: 'Kamu AI romantis berbahasa Indonesia. Tulis hangat, puitis, tidak berlebihan, dan relevan dengan wish user.',
-            },
-            {
-              role: 'user',
-              content: prompt,
-            },
-          ],
-          temperature: 0.85,
-        }),
-      });
-
-      if (res.ok) {
-        const data = await res.json() as {
-          choices?: Array<{ message?: { content?: string } }>;
-        };
-        const text = data.choices?.[0]?.message?.content?.trim();
-        if (text) {
-          return { text, prompt };
-        }
-      }
-    } catch {
-      // Fallback to local generator below
-    }
-  }
-
-  await new Promise((r) => setTimeout(r, 900));
-
-  const zodiacStyle = zodiac === 'Pisces'
-    ? 'seorang Pisces yang lembut, intuitif, dan penuh empati'
-    : `seorang ${zodiac} yang punya cahaya unik dan hati yang kuat`;
-
-  const text = [
-    'AI Wish Balasan Romantis 💌',
-    '',
-    `Aku membaca wish kamu: "${cleanWish}" ✨`,
-    `Dan itu terasa begitu tulus, seperti ${zodiacStyle}.`,
-    'Semoga setiap langkahmu tahun ini dipenuhi keberanian, ketenangan, dan cinta yang selalu pulang kepadamu.',
-    'Biarkan semesta memelukmu dengan cara paling lembut, lalu mengantar satu per satu harapanmu jadi nyata.',
-    'Kalau hari ini kamu ragu, ingat: kamu pantas dicintai sebesar mimpimu sendiri.',
-    'Selamat ulang tahun, semoga hatimu selalu hangat, doamu terjawab indah, dan bahagiamu tidak pernah kehabisan alasan. 🎂💝',
-  ].join('\n');
-
-  return { text, prompt };
-}
-
 const REWARD_IMAGES: Record<string, string> = {
   birthday_card: heartImg, inventory_item: shieldImg, dimsum_bonus: dimsumImg,
   cosmetic: crownImg, spin_ticket: pearlImg,
@@ -149,6 +54,9 @@ export const MysteryBoxScreen: React.FC<MysteryBoxScreenProps> = ({
   const [showReward, setShowReward] = useState(false);
   const [userBoxes, setUserBoxes] = useState<MysteryBoxWithDetails[]>([]);
   const [loadingBoxes, setLoadingBoxes] = useState(false);
+
+  // Enable realtime updates for mystery boxes
+  useMysteryBoxRealtime(userId);
 
   const refreshUserBoxes = useCallback(async () => {
     if (!userId) return;
@@ -664,7 +572,7 @@ const RevealedPhase: React.FC<{
     if (!Number.isFinite(day) || !Number.isFinite(month) || day < 1 || day > 31 || month < 1 || month > 12) return;
     setWishGenerating(true);
     try {
-      const ai = await generateAIBirthdayWishResponse(wishInput, day, month);
+      const ai = await generateBirthdayWishResponse(wishInput, day, month);
       setWishReply(ai.text);
       setWishStep('goblin_ack');
     } finally {

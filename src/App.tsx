@@ -58,6 +58,7 @@ import { SettingsScreen } from './components/screens/SettingsScreen';
 import { SpinWheelScreen } from './components/screens/SpinWheelScreen';
 import { GamePauseMenu } from './components/screens/GamePauseMenu';
 import { BattleLoadingScreen } from './components/screens/BattleLoadingScreen';
+import { ChatScreen } from './components/screens/ChatScreen';
 
 // ─── Auth / Backend ─────────────────────────────────────────────────────────
 import { getCurrentUser, logout, onAuthStateChange } from './lib/auth';
@@ -78,6 +79,7 @@ import { playSoundEffect } from './utils/audio';
 import { playClickSound } from './utils/uiAudio';
 import { hapticLight, hapticMedium, hapticSuccess } from './utils/haptics';
 import { ScreenTransition } from './components/ui/ScreenTransition';
+import { ChatBot } from './components/ui/ChatBot';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // App — thin orchestrator; all heavy lifting lives in hooks / engine
@@ -1249,6 +1251,26 @@ export default function App() {
           }}
         />
       </ScreenTransition>
+
+      {/* ── Chat Screen ─────────────────────────────────────────────────── */}
+      <ScreenTransition show={gameState === 'chat'} type="slide-up" duration={250}>
+        <ChatScreen 
+          onBack={() => {
+            setGameState('mainMenu');
+            gameRef.current.state = 'mainMenu';
+          }}
+        />
+      </ScreenTransition>
+
+      {/* ── ChatBot ─────────────────────────────────────────────────────── */}
+      {authUser && gameState === 'mainMenu' && (
+        <ChatBot 
+          onOpenChat={() => {
+            setGameState('chat');
+            gameRef.current.state = 'chat';
+          }}
+        />
+      )}
     </div>
   );
 }

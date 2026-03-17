@@ -23,8 +23,20 @@ CREATE INDEX IF NOT EXISTS idx_mystery_boxes_assigned_status
   ON public.mystery_boxes(assigned_to, status) 
   WHERE status IN ('pending', 'delivered', 'opened');
 
-CREATE INDEX IF NOT EXISTS idx_mystery_boxes_code 
-  ON public.mystery_boxes(redemption_code);
+-- Mystery Boxes: Assigned user + created_at (for sorted queries)
+CREATE INDEX IF NOT EXISTS idx_mystery_boxes_assigned_to_created 
+  ON public.mystery_boxes(assigned_to, created_at DESC)
+  WHERE assigned_to IS NOT NULL;
+
+-- Mystery Boxes: Redemption code lookup (case-insensitive)
+CREATE INDEX IF NOT EXISTS idx_mystery_boxes_redemption_code_upper
+  ON public.mystery_boxes(UPPER(redemption_code))
+  WHERE redemption_code IS NOT NULL;
+
+-- Mystery Boxes: Wish flow queries
+CREATE INDEX IF NOT EXISTS idx_mystery_boxes_wish_flow
+  ON public.mystery_boxes(assigned_to, wish_completed, wish_flow_step)
+  WHERE assigned_to IS NOT NULL AND wish_completed = false;
 
 -- Leaderboard: Covering index for sorted queries (index-only scans)
 CREATE INDEX IF NOT EXISTS idx_leaderboard_covering 
