@@ -118,6 +118,9 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
   const [collectedResults, setCollectedResults] = useState<SpinResult[]>([]);
   const [currentResult, setCurrentResult] = useState<SpinResult | null>(null);
   const [sendingWA, setSendingWA] = useState(false);
+  const [showClaimModal, setShowClaimModal] = useState(false);
+  const [claimMessage, setClaimMessage] = useState('');
+  const [generatingClaimMessage, setGeneratingClaimMessage] = useState(false);
   // Canvas-based wheel for precise rendering
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rotationRef = useRef(0);
@@ -594,11 +597,30 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
       .join('\n');
   }, [spinResults, storeData.mysteryBoxRewards, storeData.profile?.name]);
 
-  const handleSendVoucherToWhatsApp = useCallback(async () => {
+  const prepareClaimMessage = useCallback(async () => {
+    if (generatingClaimMessage) return;
+    setGeneratingClaimMessage(true);
+    try {
+      const text = await generateProfessionalWAMessage();
+      setClaimMessage(text);
+    } finally {
+      setGeneratingClaimMessage(false);
+    }
+  }, [generateProfessionalWAMessage, generatingClaimMessage]);
+
+  useEffect(() => {
+    if (phase !== 'summary') return;
+    setShowClaimModal(true);
+    if (!claimMessage) {
+      prepareClaimMessage();
+    }
+  }, [phase, claimMessage, prepareClaimMessage]);
+
+  const handleSendVoucherToWhatsApp = useCallback(async (readyMessage?: string) => {
     if (sendingWA) return;
     setSendingWA(true);
     try {
-      const msg = await generateProfessionalWAMessage();
+      const msg = readyMessage?.trim() || await generateProfessionalWAMessage();
 
       const physicalPrizes = spinResults
         .filter((r) => r.segment.prizeType !== 'dimsum_bonus')
@@ -634,6 +656,8 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
       if (redemptionId) {
         await updateVoucherRedemptionStatus(redemptionId, 'sent');
       }
+
+      setShowClaimModal(false);
     } finally {
       setSendingWA(false);
     }
@@ -918,7 +942,7 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
             )}
 
             <button
-              onClick={handleSendVoucherToWhatsApp}
+              onClick={() => setShowClaimModal(true)}
               disabled={sendingWA}
               className="w-full py-3 rounded-xl text-sm font-black uppercase tracking-wider transition active:scale-95 flex items-center justify-center disabled:opacity-60"
               style={{
@@ -929,7 +953,7 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
                 textShadow: '0 1px 2px rgba(0,0,0,0.3)',
               }}
             >
-              {sendingWA ? '🤖 Menyiapkan pesan AI...' : '🎫 Tukarkan Voucher'}
+              {sendingWA ? '🤖 Menyiapkan pesan AI...' : '🎫 Claim Hadiah'}
             </button>
 
             <button onClick={onBack} className="mt-2 text-xs text-amber-500/60 underline">
@@ -995,6 +1019,81 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
           </div>
         )}
       </div>
+
+      {phase === 'summary' && showClaimModal && (
+        <div className="absolute inset-0 z-30 flex items-end justify-center px-3 py-3 sm:items-center">
+          <div
+            className="absolute inset-0 bg-black/70"
+            onClick={() => !sendingWA && setShowClaimModal(false)}
+          />
+
+          <div
+            className="relative z-10 w-full max-w-sm rounded-2xl p-4"
+            style={{
+              background: 'linear-gradient(135deg, rgba(20,20,20,0.98) 0%, rgba(8,8,8,0.98) 100%)',
+              border: '2px solid rgba(52,211,153,0.45)',
+              boxShadow: '0 10px 35px rgba(0,0,0,0.65)',
+            }}
+          >
+            <h3 className="text-base font-black text-emerald-300 mb-1">🎫 Claim Hadiah Lucky Spin</h3>
+            <p className="text-[10px] text-emerald-200/70 mb-3">Pesan WA akan digenerate AI dan siap kirim ke admin.</p>
+
+            <div className="mb-3 rounded-lg p-2"
+              style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.25)' }}
+            >
+              <p className="text-[10px] text-emerald-300/80 mb-1 font-bold uppercase tracking-wider">Ringkasan Hadiah</p>
+              <div className="text-[11px] text-emerald-100/90 leading-relaxed">
+                {spinResults.filter((r) => r.segment.prizeType !== 'dimsum_bonus').map((r, i) => (
+                  <p key={`prize-${i}`}>• {r.segment.icon || '🎁'} {r.segment.name || r.segment.label}</p>
+                ))}
+                <p>
+                  • Bonus Dimsum: +{spinResults.filter(r => r.segment.prizeType === 'dimsum_bonus').reduce((sum, r) => sum + (r.segment.value || 2), 0)}
+                </p>
+              </div>
+            </div>
+
+            <div className="mb-3">
+              <textarea
+                readOnly
+                value={claimMessage || (generatingClaimMessage ? '🤖 AI sedang menulis pesan WhatsApp...' : '')}
+                className="w-full h-36 rounded-lg px-3 py-2 text-[11px] leading-relaxed outline-none resize-none"
+                style={{
+                  background: 'rgba(0,0,0,0.45)',
+                  border: '1px solid rgba(52,211,153,0.28)',
+                  color: '#d1fae5',
+                }}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={prepareClaimMessage}
+                disabled={generatingClaimMessage || sendingWA}
+                className="py-2 rounded-lg text-[11px] font-bold uppercase tracking-wide disabled:opacity-60"
+                style={{
+                  background: 'rgba(8,145,178,0.2)',
+                  border: '1px solid rgba(103,232,249,0.35)',
+                  color: '#a5f3fc',
+                }}
+              >
+                {generatingClaimMessage ? 'Generating...' : 'Generate Ulang'}
+              </button>
+              <button
+                onClick={() => handleSendVoucherToWhatsApp(claimMessage)}
+                disabled={sendingWA || generatingClaimMessage || !claimMessage.trim()}
+                className="py-2 rounded-lg text-[11px] font-black uppercase tracking-wide disabled:opacity-60"
+                style={{
+                  background: 'linear-gradient(180deg, #059669 0%, #047857 100%)',
+                  border: '1px solid rgba(52,211,153,0.45)',
+                  color: '#ecfdf5',
+                }}
+              >
+                {sendingWA ? 'Sending...' : 'Kirim ke WA'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style>{`
         @keyframes shimmer {

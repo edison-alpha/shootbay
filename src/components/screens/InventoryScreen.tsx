@@ -271,8 +271,81 @@ export const InventoryScreen: React.FC<InventoryScreenProps> = ({
 const ItemDetailModal: React.FC<{
   item: InventoryItem; onClose: () => void; onRedeem: (item: InventoryItem) => void;
 }> = ({ item, onClose, onRedeem }) => {
-  const [confirming, setConfirming] = useState(false);
+  const [sendingWA, setSendingWA] = useState(false);
+  const [generatedMessage, setGeneratedMessage] = useState('');
   const itemImage = ITEM_IMAGES[item.id] || TYPE_IMAGES[item.type] || shieldImg;
+
+  const generateRedeemWAMessage = async () => {
+    const prompt = [
+      'Buat pesan WhatsApp berbahasa Indonesia yang profesional, sopan, dan siap kirim ke admin untuk redeem item game.',
+      'Format: salam pembuka, identitas singkat, detail item, permintaan verifikasi, penutup.',
+      `Nama item: ${item.name}`,
+      `Item ID: ${item.id}`,
+      `Tipe item: ${item.type}`,
+      `Jumlah: ${item.quantity}`,
+      `Status redeem lokal: ${item.redeemed ? 'sudah redeemed' : 'belum redeemed'}`,
+      'Bahasa ringkas, tidak bertele-tele, tetap ramah.',
+    ].join('\n');
+
+    const atxpConnection = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env?.VITE_ATXP_CONNECTION;
+    if (atxpConnection) {
+      try {
+        const res = await fetch('https://llm.atxp.ai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${atxpConnection}`,
+          },
+          body: JSON.stringify({
+            model: 'gpt-4.1',
+            messages: [
+              { role: 'system', content: 'Kamu asisten penulis pesan WhatsApp profesional berbahasa Indonesia.' },
+              { role: 'user', content: prompt },
+            ],
+            temperature: 0.7,
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json() as { choices?: Array<{ message?: { content?: string } }> };
+          const text = data.choices?.[0]?.message?.content?.trim();
+          if (text) return text;
+        }
+      } catch {
+        // fallback below
+      }
+    }
+
+    return [
+      'Halo Admin Goblin Bay,',
+      '',
+      `Saya ingin redeem item berikut:`,
+      `• Nama item: ${item.name}`,
+      `• Item ID: ${item.id}`,
+      `• Tipe: ${item.type}`,
+      `• Jumlah: ${item.quantity}`,
+      '',
+      'Mohon bantu verifikasi dan langkah penukaran selanjutnya.',
+      '',
+      'Terima kasih.',
+    ].join('\n');
+  };
+
+  const handleSingleRedeem = async () => {
+    if (sendingWA) return;
+    setSendingWA(true);
+    try {
+      const msg = await generateRedeemWAMessage();
+      setGeneratedMessage(msg);
+
+      if (!item.redeemed) {
+        onRedeem(item);
+      }
+
+      window.open(`${WA_REDEEM_URL}?text=${encodeURIComponent(msg)}`, '_blank', 'noopener,noreferrer');
+    } finally {
+      setSendingWA(false);
+    }
+  };
 
   const rarityColors: Record<string, { border: string; glow: string; label: string; text: string }> = {
     special: { border: 'rgba(192,132,252,0.5)', glow: 'rgba(192,132,252,0.15)', label: '⚡ SPECIAL', text: 'text-purple-300' },
@@ -343,68 +416,36 @@ const ItemDetailModal: React.FC<{
             <div className="text-[10px] font-mono font-bold text-gray-600 mt-1.5 text-center">{item.id.toUpperCase()}</div>
           </div>
 
-          {/* Redeem buttons */}
-          {!item.redeemed && !confirming && (
-            <div className="space-y-2">
-              <button onClick={() => { playClickSound(); setConfirming(true); }}
-                className="w-full py-3 rounded-xl text-sm font-black uppercase tracking-wider transition active:scale-[0.97] relative overflow-hidden"
-                style={{
-                  background: 'linear-gradient(180deg, #059669, #047857, #065f46)',
-                  border: '2px solid rgba(52,211,153,0.5)', color: '#ecfdf5',
-                  boxShadow: '0 4px 16px rgba(5,150,105,0.4)',
-                }}
-              >
-                🎁 Redeem Item
-              </button>
-              <a href={`${WA_REDEEM_URL}?text=${encodeURIComponent(`Hai, saya ingin redeem item: ${item.name} (${item.id})`)}`}
-                target="_blank" rel="noopener noreferrer"
-                onClick={() => playClickSound()}
-                className="w-full py-3 rounded-xl text-sm font-bold uppercase tracking-wider transition active:scale-[0.97] flex items-center justify-center gap-2"
-                style={{
-                  background: 'linear-gradient(180deg, #25D366, #128C7E)',
-                  border: '2px solid rgba(37,211,102,0.5)', color: '#fff',
-                  boxShadow: '0 4px 16px rgba(37,211,102,0.3)',
-                }}
-              >
-              Redeem
-              </a>
-            </div>
-          )}
-
-          {/* Confirmation */}
-          {!item.redeemed && confirming && (
-            <div className="space-y-2">
-              <p className="text-xs text-amber-400/80 text-center mb-2">Yakin ingin redeem item ini?</p>
-              <div className="flex gap-2">
-                <button onClick={() => { playClickSound(); setConfirming(false); }}
-                  className="flex-1 py-3 rounded-xl text-xs font-bold transition active:scale-95"
-                  style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(180,140,60,0.3)', color: '#b4a060' }}
-                >Cancel</button>
-                <button onClick={() => { onRedeem(item); setConfirming(false); }}
-                  className="flex-1 py-3 rounded-xl text-xs font-black uppercase transition active:scale-95"
-                  style={{ background: 'linear-gradient(180deg, #059669, #047857)', border: '2px solid rgba(52,211,153,0.5)', color: '#ecfdf5' }}
-                >✅ Confirm</button>
-              </div>
-            </div>
-          )}
-
-          {/* Already redeemed */}
-          {item.redeemed && (
-            <div className="space-y-2">
+          {/* Single redeem button */}
+          <div className="space-y-2">
+            {item.redeemed && (
               <div className="text-center py-2 rounded-xl" style={{ background: 'rgba(52,211,153,0.05)', border: '1px solid rgba(52,211,153,0.1)' }}>
                 <p className="text-xs text-emerald-500/70">✨ Item telah di-redeem!</p>
                 {item.redeemedAt && <p className="text-[8px] text-emerald-600/50 mt-1">{new Date(item.redeemedAt).toLocaleDateString('id-ID', { dateStyle: 'long' })}</p>}
               </div>
-              <a href={`${WA_REDEEM_URL}?text=${encodeURIComponent(`Hai, saya ingin mengklaim hadiah: ${item.name} (${item.id})`)}`}
-                target="_blank" rel="noopener noreferrer"
-                onClick={() => playClickSound()}
-                className="w-full py-3 rounded-xl text-sm font-bold uppercase tracking-wider transition active:scale-[0.97] flex items-center justify-center gap-2"
-                style={{ background: 'linear-gradient(180deg, #25D366, #128C7E)', border: '2px solid rgba(37,211,102,0.5)', color: '#fff' }}
-              >
-                📱 Claim Manual
-              </a>
-            </div>
-          )}
+            )}
+
+            <button
+              onClick={() => { playClickSound(); handleSingleRedeem(); }}
+              disabled={sendingWA}
+              className="w-full py-3 rounded-xl text-sm font-black uppercase tracking-wider transition active:scale-[0.97] disabled:opacity-60"
+              style={{
+                background: 'linear-gradient(180deg, #25D366, #128C7E)',
+                border: '2px solid rgba(37,211,102,0.5)',
+                color: '#fff',
+                boxShadow: '0 4px 16px rgba(37,211,102,0.3)',
+              }}
+            >
+              {sendingWA ? '🤖 Menyiapkan pesan AI...' : item.redeemed ? '📱 Hubungi Admin di WhatsApp' : '🎁 Redeem via WhatsApp'}
+            </button>
+
+            {generatedMessage && (
+              <div className="rounded-lg p-2" style={{ background: 'rgba(37,211,102,0.08)', border: '1px solid rgba(37,211,102,0.2)' }}>
+                <p className="text-[9px] text-emerald-300/80 font-bold uppercase tracking-wider mb-1">Pesan AI siap kirim</p>
+                <p className="text-[9px] text-emerald-100/80 line-clamp-3">{generatedMessage}</p>
+              </div>
+            )}
+          </div>
 
           <button onClick={() => { playClickSound(); onClose(); }}
             className="w-full mt-3 py-2.5 rounded-xl text-xs font-bold transition active:scale-95"
