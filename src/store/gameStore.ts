@@ -228,7 +228,7 @@ export function loadGameData(): GameStoreData {
     const raw = localStorage.getItem(getStorageKey());
     if (!raw) return getDefaultData();
     const parsed = JSON.parse(raw) as Partial<GameStoreData>;
-    return { ...getDefaultData(), ...parsed };
+    return normalizeGameData({ ...getDefaultData(), ...parsed });
   } catch {
     return getDefaultData();
   }
@@ -236,10 +236,65 @@ export function loadGameData(): GameStoreData {
 
 export function saveGameData(data: GameStoreData): void {
   try {
-    localStorage.setItem(getStorageKey(), JSON.stringify(data));
+    localStorage.setItem(getStorageKey(), JSON.stringify(normalizeGameData(data)));
   } catch {
     // Storage full or unavailable
   }
+}
+
+function normalizeGameData(data: GameStoreData): GameStoreData {
+  const inventoryMap = new Map<string, InventoryItem>();
+  for (const item of data.inventory || []) {
+    const key = `${item.id || item.name}`.toLowerCase();
+    const existing = inventoryMap.get(key);
+    if (!existing) {
+      inventoryMap.set(key, { ...item, quantity: Math.max(0, item.quantity || 0) });
+      continue;
+    }
+
+    inventoryMap.set(key, {
+      ...existing,
+      quantity: Math.max(0, (existing.quantity || 0) + (item.quantity || 0)),
+      redeemed: Boolean(existing.redeemed || item.redeemed),
+      redeemedAt: Math.max(existing.redeemedAt || 0, item.redeemedAt || 0) || undefined,
+    });
+  }
+
+  const rewardMap = new Map<string, MysteryBoxReward>();
+  for (const reward of data.mysteryBoxRewards || []) {
+    const key = reward.id;
+    const existing = rewardMap.get(key);
+    if (!existing) {
+      rewardMap.set(key, reward);
+      continue;
+    }
+
+    rewardMap.set(key, {
+      ...existing,
+      ...reward,
+      claimed: Boolean(existing.claimed || reward.claimed),
+      claimedAt: Math.max(existing.claimedAt || 0, reward.claimedAt || 0) || undefined,
+    });
+  }
+
+  const leaderboardUnique = new Map<string, LeaderboardEntry>();
+  for (const entry of data.leaderboard || []) {
+    const key = `${entry.playerName}:${entry.totalDimsum}:${entry.totalStars}:${entry.levelsCompleted}`;
+    const existing = leaderboardUnique.get(key);
+    if (!existing || entry.timestamp > existing.timestamp) {
+      leaderboardUnique.set(key, entry);
+    }
+  }
+
+  return {
+    ...data,
+    inventory: Array.from(inventoryMap.values()),
+    mysteryBoxRewards: Array.from(rewardMap.values()),
+    redeemedCodes: Array.from(new Set((data.redeemedCodes || []).map((code) => code.toUpperCase().trim()))),
+    leaderboard: Array.from(leaderboardUnique.values())
+      .sort((a, b) => b.totalDimsum - a.totalDimsum)
+      .slice(0, 50),
+  };
 }
 
 // ─── Profile ─────────────────────────────────────────────────────────────────
