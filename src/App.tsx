@@ -134,6 +134,8 @@ export default function App() {
   /** When true, the next debounced save is suppressed (data just came from server). */
   const suppressSaveRef = useRef(false);
   const storeDataRef = useRef(storeData);
+  /** When true, user is going through first-time onboarding — block realtime overwrites. */
+  const onboardingInProgressRef = useRef(false);
 
   // ── Refs ─────────────────────────────────────────────────────────────
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -172,10 +174,17 @@ export default function App() {
     setActiveStorageUser(authUser?.id ?? null);
   }, [authUser]);
 
+  // Track whether auth init has already run to prevent re-triggers
+  const authInitDoneRef = useRef(false);
+
   useEffect(() => {
-    if (!authChecked || !introReady || gameState !== 'intro') return;
+    if (!authChecked || !introReady) return;
+    // Only run auth init once; subsequent auth changes handled by onAuthStateChange
+    if (authInitDoneRef.current) return;
 
     if (authUser) {
+      authInitDoneRef.current = true;
+
       // Admin session: if user is admin and last state was adminDashboard, restore it
       const lastState = loadSessionState();
       if (authUser.role === 'admin' && lastState === 'adminDashboard') {
@@ -184,7 +193,6 @@ export default function App() {
         return;
       }
 
-      // Try loading from Supabase first
       // Helper: detect if a profile needs onboarding (auto-created by OAuth, never set up)
       // Check both characterId AND profilePhoto — the DB defaults character_id to 'agree',
       // so auto-created profiles pass the characterId check but have no avatar_url (profilePhoto).
@@ -192,19 +200,10 @@ export default function App() {
       const needsOnboarding = (profile: { characterId?: string | null; profilePhoto?: string | null } | null | undefined): boolean =>
         !profile || !profile.characterId || !profile.profilePhoto;
 
-      const cachedData = loadGameData();
-      if (cachedData.profile && !needsOnboarding(cachedData.profile)) {
-        setPlayerName(cachedData.profile.name);
-        setSelectedCharacterId((cachedData.profile.characterId || 'agree') as CharacterId);
-        camera.setProfilePhoto(cachedData.profile.profilePhoto || null);
-        setStoreData(cachedData);
-
-        const savedState = loadSessionState();
-        const resumeState = (savedState ?? 'mainMenu') as GameState;
-        setGameState(resumeState);
-        gameRef.current.state = resumeState;
-      }
-
+      // Fetch authoritative data from Supabase — this is the single source of truth
+      // for determining if onboarding is needed. We intentionally do NOT trust cached
+      // data for this decision because localStorage may have stale data from a previous
+      // session or another account.
       loadGameDataFromSupabase(authUser.id)
         .then((supaData) => {
           const data = supaData;
@@ -221,15 +220,21 @@ export default function App() {
             setGameState(resumeState);
             gameRef.current.state = resumeState;
           } else {
-            // New user (no profile, or profile without characterId = onboarding not done)
+            // New user or incomplete onboarding → start onboarding flow
+            // username → photo → character select → tutorial
+            onboardingInProgressRef.current = true;
             resetForFreshOnboarding();
+            clearSessionState();
             setPlayerName(authUser.displayName || authUser.username);
             setGameState('nameEntry');
             gameRef.current.state = 'nameEntry';
           }
         })
         .catch(() => {
+          // Supabase unavailable — start onboarding as a safe fallback
+          onboardingInProgressRef.current = true;
           resetForFreshOnboarding();
+          clearSessionState();
           setPlayerName(authUser.displayName || authUser.username);
           setGameState('nameEntry');
           gameRef.current.state = 'nameEntry';
@@ -237,10 +242,12 @@ export default function App() {
       return;
     }
 
+    authInitDoneRef.current = true;
     setActiveStorageUser(null);
     setGameState('login');
     gameRef.current.state = 'login';
-  }, [authChecked, authUser, gameState, introReady, resetForFreshOnboarding]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authChecked, authUser, introReady]);
 
   const { loadingProgress, introFading } = useIntroLoader(gameState, gameRef, () => {
     setIntroReady(true);
@@ -465,6 +472,9 @@ export default function App() {
   };
 
   const goToMainMenu = () => {
+    // Onboarding is complete — allow realtime sync again
+    onboardingInProgressRef.current = false;
+
     // Save profile to localStorage
     const updated = saveProfile(storeData, {
       name: playerName.trim(),
@@ -609,6 +619,7 @@ export default function App() {
   };
 
   const fullRestart = () => {
+    onboardingInProgressRef.current = true;
     setSelectedCharacterId('agree');
     setPlayerName('');
     camera.setProfilePhoto(null);
@@ -642,6 +653,8 @@ export default function App() {
     setActiveStorageUser(null);
     setAuthUser(null);
     resetForFreshOnboarding();
+    onboardingInProgressRef.current = false;
+    authInitDoneRef.current = false; // Allow auth init to run again on next login
     setPlayerName('');
     setGameState('login');
     gameRef.current.state = 'login';
@@ -650,6 +663,8 @@ export default function App() {
   // ── Sync full game data to Supabase (debounced — longer debounce reduces battery/network) ──
   useEffect(() => {
     if (!authUser || !storeData.profile) return;
+    // Don't auto-save during onboarding — wait until goToMainMenu() explicitly saves
+    if (onboardingInProgressRef.current) return;
 
     // Skip redundant save when storeData was just loaded from Supabase (realtime / poll).
     // This prevents writing the same data back to the server and avoids
@@ -689,6 +704,8 @@ export default function App() {
       }
 
       realtimeSyncTimeoutRef.current = window.setTimeout(() => {
+        // Don't overwrite local state while user is going through onboarding
+        if (onboardingInProgressRef.current) return;
         if (userRealtimeReloadingRef.current) return;
         userRealtimeReloadingRef.current = true;
 
@@ -698,6 +715,8 @@ export default function App() {
         loadGameDataFromSupabase(authUser.id)
           .then((fresh) => {
             if (!fresh?.profile) return;
+            // Don't overwrite during onboarding (double-check in case flag changed)
+            if (onboardingInProgressRef.current) return;
 
             // Cheap hash comparison — avoids full JSON.stringify per sync
             const freshHash = `${fresh.totalDimsum}|${fresh.tickets}|${fresh.ticketsUsed}|${fresh.inventory.length}|${fresh.mysteryBoxRewards.length}|${fresh.redeemedCodes.length}|${Object.keys(fresh.levels).length}|${fresh.profile?.name ?? ''}|${fresh.profile?.characterId ?? ''}`;
