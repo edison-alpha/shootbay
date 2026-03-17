@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import type { GameStoreData } from '../../store/gameStore';
 import { saveGameData } from '../../store/gameStore';
-import { fetchSpinWheelPrizes, createVoucherRedemption, updateVoucherRedemptionStatus } from '../../lib/gameService';
+import { fetchSpinWheelPrizes, createVoucherRedemption, updateVoucherRedemptionStatus, syncInventoryItem } from '../../lib/gameService';
 import type { SpinWheelPrizeRow } from '../../lib/gameService';
 import { playClickSound, playSpinStartSound, playSpinTickSound, playWinSound } from '../../utils/uiAudio';
 import arenaBg from '../../assets/arena_background.webp';
@@ -498,8 +498,24 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
     updated.inventory = items;
     updated.mysteryBoxRewards = rewardsAfterConsume;
     saveGameData(updated);
+    
+    // Sync inventory to Supabase
+    if (userId) {
+      for (const result of spinResults) {
+        if (result.segment.prizeType !== 'dimsum_bonus') {
+          syncInventoryItem(
+            userId,
+            result.segment.name || `${result.segment.icon || '🎁'} ${result.segment.label}`,
+            'special',
+            result.segment.icon || '🎁',
+            1
+          ).catch(err => console.error('Failed to sync inventory:', err));
+        }
+      }
+    }
+    
     return updated;
-  }, [storeData, spinResults]);
+  }, [storeData, spinResults, userId]);
 
   const nextSpin = useCallback(() => {
     playClickSound();
@@ -1074,6 +1090,7 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
         <div className="absolute inset-0 z-[80] flex items-end justify-center px-3 py-3 sm:items-center">
           <div
             className="absolute inset-0 bg-black/80"
+            onClick={() => setShowClaimModal(false)}
           />
 
           <div
@@ -1084,9 +1101,22 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
               boxShadow: '0 10px 35px rgba(0,0,0,0.65)',
             }}
           >
-            <h3 className="text-base font-black text-emerald-300 mb-1">🎫 Claim Hadiah Lucky Spin</h3>
-            <p className="text-[10px] text-emerald-200/70 mb-1">Pesan WA akan disiapkan otomatis untuk admin.</p>
-            <p className="text-[10px] text-amber-300/90 mb-3 font-bold">Langkah ini wajib. Card tidak bisa ditutup sebelum klik claim.</p>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-base font-black text-emerald-300">🎫 Claim Hadiah Lucky Spin</h3>
+              <button
+                onClick={() => setShowClaimModal(false)}
+                className="w-7 h-7 rounded-lg flex items-center justify-center transition active:scale-95"
+                style={{
+                  background: 'rgba(239,68,68,0.2)',
+                  border: '1px solid rgba(239,68,68,0.4)',
+                  color: '#fca5a5',
+                }}
+                aria-label="Close modal"
+              >
+                ✕
+              </button>
+            </div>
+            <p className="text-[10px] text-emerald-200/70 mb-3">Pesan WA akan disiapkan otomatis untuk admin. Klik "Kirim ke WA" untuk claim hadiah.</p>
 
             <div className="mb-3 rounded-lg p-2"
               style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.25)' }}
@@ -1126,7 +1156,7 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
                   color: '#a5f3fc',
                 }}
               >
-                {generatingClaimMessage ? 'Menyiapkan pesan...' : 'Siapkan Ulang'}
+                {generatingClaimMessage ? 'Menyiapkan...' : 'Siapkan Ulang'}
               </button>
               <button
                 onClick={() => handleSendVoucherToWhatsApp(claimMessage)}
@@ -1141,6 +1171,18 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
                 {sendingWA ? 'Sending...' : 'Kirim ke WA'}
               </button>
             </div>
+            
+            <button
+              onClick={() => setShowClaimModal(false)}
+              className="w-full mt-2 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wide transition active:scale-95"
+              style={{
+                background: 'rgba(107,114,128,0.2)',
+                border: '1px solid rgba(156,163,175,0.3)',
+                color: '#9ca3af',
+              }}
+            >
+              Tutup (Claim Nanti)
+            </button>
           </div>
         </div>
       )}

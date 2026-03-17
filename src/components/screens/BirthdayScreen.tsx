@@ -9,6 +9,7 @@ interface BirthdayScreenProps {
   onPlayAgain: () => void;
   onViewRewards: () => void;
   onMenu: () => void;
+  onClose?: () => void; // Optional close handler
 }
 
 export const BirthdayScreen: React.FC<BirthdayScreenProps> = ({
@@ -18,6 +19,7 @@ export const BirthdayScreen: React.FC<BirthdayScreenProps> = ({
   onPlayAgain,
   onViewRewards,
   onMenu,
+  onClose,
 }) => (
   <div
     className="absolute inset-0 z-50 flex items-start justify-center overflow-y-auto"
@@ -29,8 +31,12 @@ export const BirthdayScreen: React.FC<BirthdayScreenProps> = ({
         'max(16px, env(safe-area-inset-top, 16px)) max(16px, env(safe-area-inset-right, 16px)) max(16px, env(safe-area-inset-bottom, 16px)) max(16px, env(safe-area-inset-left, 16px))',
     }}
   >
-    {/* Dark overlay */}
-    <div className="absolute inset-0" style={{ background: 'rgba(10,5,2,0.8)' }} />
+    {/* Dark overlay - clickable to close */}
+    <div 
+      className="absolute inset-0 cursor-pointer" 
+      style={{ background: 'rgba(10,5,2,0.8)' }}
+      onClick={onClose}
+    />
 
     {/* Confetti particles (CSS) */}
     <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -63,7 +69,21 @@ export const BirthdayScreen: React.FC<BirthdayScreenProps> = ({
       }}
     >
       {/* Header */}
-      <div className="shrink-0 p-6 pb-3 text-center">
+      <div className="shrink-0 p-6 pb-3 text-center relative">
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="absolute top-4 right-4 w-8 h-8 rounded-lg flex items-center justify-center transition active:scale-95"
+            style={{
+              background: 'rgba(239,68,68,0.2)',
+              border: '1px solid rgba(239,68,68,0.4)',
+              color: '#fca5a5',
+            }}
+            aria-label="Close birthday card"
+          >
+            ✕
+          </button>
+        )}
         <div
           className="mb-3 text-5xl"
           style={{ filter: 'drop-shadow(0 0 24px rgba(192,132,252,0.5))' }}

@@ -65,6 +65,8 @@ import type { AuthUser } from './lib/auth';
 import {
   loadGameDataFromSupabase,
   saveFullGameDataToSupabase,
+  syncLevelProgress,
+  syncLeaderboard,
 } from './lib/gameService';
 import { clearAllCache, invalidatePrefix, CK } from './lib/queryCache';
 import { LoginScreen } from './components/screens/LoginScreen';
@@ -321,6 +323,26 @@ export default function App() {
         });
 
         setStoreData(finalData);
+        
+        // Sync to Supabase
+        if (authUser?.id) {
+          const stars = Math.floor((gameRef.current.dimsumCollected / gameRef.current.dimsumTotal) * 3);
+          syncLevelProgress(
+            authUser.id,
+            currentLevelId,
+            gameRef.current.dimsumCollected,
+            stars,
+            timeElapsed
+          ).catch(err => console.error('Failed to sync level progress:', err));
+          
+          syncLeaderboard(
+            authUser.id,
+            playerName.trim(),
+            finalData.totalDimsum,
+            getTotalStars(finalData)
+          ).catch(err => console.error('Failed to sync leaderboard:', err));
+        }
+        
         setGameState('levelComplete');
         audio.stopBackgroundMusic();
         playSoundEffect(gameRef.current.audio['victory_music']);
@@ -334,7 +356,7 @@ export default function App() {
       setGameState('milestoneDialogue');
       audio.stopBackgroundMusic();
     },
-    [playerName, audio, levelStartTime, storeData, currentLevelId, camera.profilePhoto],
+    [playerName, audio, levelStartTime, storeData, currentLevelId, camera.profilePhoto, authUser],
   );
 
   const onBirthday = useCallback(() => {
@@ -365,10 +387,30 @@ export default function App() {
     const finalData = addBirthdayReward(withLeaderboard, playerName.trim(), wishes);
 
     setStoreData(finalData);
+    
+    // Sync to Supabase
+    if (authUser?.id) {
+      const stars = Math.floor((gameRef.current.dimsumCollected / gameRef.current.dimsumTotal) * 3);
+      syncLevelProgress(
+        authUser.id,
+        currentLevelId,
+        gameRef.current.dimsumCollected,
+        stars,
+        timeElapsed
+      ).catch(err => console.error('Failed to sync level progress:', err));
+      
+      syncLeaderboard(
+        authUser.id,
+        playerName.trim(),
+        finalData.totalDimsum,
+        getTotalStars(finalData)
+      ).catch(err => console.error('Failed to sync leaderboard:', err));
+    }
+    
     setGameState('birthday');
     audio.stopBackgroundMusic();
     playSoundEffect(gameRef.current.audio['victory_music']);
-  }, [audio, levelStartTime, storeData, currentLevelId, playerName, camera.profilePhoto, wishes]);
+  }, [audio, levelStartTime, storeData, currentLevelId, playerName, camera.profilePhoto, wishes, authUser]);
 
   const onDimsumCollected = useCallback(
     (collected: number, total: number) => {
@@ -402,10 +444,30 @@ export default function App() {
     });
 
     setStoreData(finalData);
+    
+    // Sync to Supabase
+    if (authUser?.id) {
+      const stars = Math.floor((gameRef.current.dimsumCollected / gameRef.current.dimsumTotal) * 3);
+      syncLevelProgress(
+        authUser.id,
+        currentLevelId,
+        gameRef.current.dimsumCollected,
+        stars,
+        timeElapsed
+      ).catch(err => console.error('Failed to sync level progress:', err));
+      
+      syncLeaderboard(
+        authUser.id,
+        playerName.trim(),
+        finalData.totalDimsum,
+        getTotalStars(finalData)
+      ).catch(err => console.error('Failed to sync leaderboard:', err));
+    }
+    
     setGameState('levelComplete');
     audio.stopBackgroundMusic();
     playSoundEffect(gameRef.current.audio['victory_music']);
-  }, [audio, levelStartTime, storeData, currentLevelId, playerName, camera.profilePhoto]);
+  }, [audio, levelStartTime, storeData, currentLevelId, playerName, camera.profilePhoto, authUser]);
 
   // ── Game loop ────────────────────────────────────────────────────────
   useGameLoop(canvasRef, gameRef, {
