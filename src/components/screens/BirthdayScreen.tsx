@@ -20,7 +20,7 @@ export const BirthdayScreen: React.FC<BirthdayScreenProps> = ({
   onMenu,
 }) => (
   <div
-    className="absolute inset-0 z-50 flex items-center justify-center overflow-hidden"
+    className="absolute inset-0 z-50 flex items-start justify-center overflow-y-auto"
     style={{
       backgroundImage: `url(${arenaBg})`,
       backgroundSize: 'cover',
@@ -53,8 +53,9 @@ export const BirthdayScreen: React.FC<BirthdayScreenProps> = ({
 
     {/* Main Card */}
     <div
-      className="relative z-10 flex max-h-full w-full max-w-md flex-col overflow-hidden rounded-2xl"
+      className="relative z-10 my-2 flex w-full max-w-md min-h-0 flex-col overflow-hidden rounded-2xl"
       style={{
+        maxHeight: 'calc(100dvh - 32px)',
         background: 'linear-gradient(135deg, rgba(62,40,20,0.97), rgba(30,18,8,0.98))',
         border: '2px solid rgba(192,132,252,0.4)',
         boxShadow:

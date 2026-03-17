@@ -671,12 +671,12 @@ const RevealedPhase: React.FC<{
 
   return (
     <div
-      className={`flex flex-col items-center w-full max-w-sm max-h-full overflow-y-auto overscroll-contain touch-auto px-0.5 pb-10 transition-all duration-700 ${showReward ? 'opacity-100 scale-100' : 'opacity-0 scale-75'}`}
+      className={`flex h-full min-h-0 w-full max-w-sm flex-col items-center self-stretch overflow-y-auto overscroll-contain touch-auto px-0.5 pb-16 transition-all duration-700 ${showReward ? 'opacity-100 scale-100' : 'opacity-0 scale-75'}`}
       style={{ WebkitOverflowScrolling: 'touch' }}
     >
       {/* ── Birthday Card Section ── */}
       {isBirthdayReveal && (
-        <div className="w-full rounded-2xl p-5 mb-4 relative overflow-hidden"
+        <div className="relative mb-4 w-full rounded-2xl p-5"
           style={{
             background: 'linear-gradient(135deg, rgba(62,40,20,0.95) 0%, rgba(40,26,12,0.98) 100%)',
             border: `3px solid ${borderColor}`,
@@ -986,7 +986,9 @@ const RevealedPhase: React.FC<{
       )}
 
       {/* ── Action Buttons ── */}
-      <div className="w-full space-y-2">
+      <div className="sticky bottom-0 z-10 w-full space-y-2 pb-1 pt-2"
+        style={{ background: 'linear-gradient(180deg, rgba(0,0,0,0), rgba(8,6,3,0.88) 35%)' }}
+      >
         {canShowOtherRewards && hasSpinReward && onSpinWheel && (
           <button onClick={onSpinWheel}
             className="w-full py-3.5 rounded-xl text-sm font-black uppercase tracking-wider transition active:scale-[0.97] relative overflow-hidden flex items-center justify-center gap-2"
