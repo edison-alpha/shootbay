@@ -9,8 +9,7 @@
 }
 
 html,
-body,
-#root {
+body {
   width: 100%;
   height: 100%;
   height: 100dvh;
@@ -21,6 +20,22 @@ body,
   -webkit-overflow-scrolling: touch;
   background: #000000;
   touch-action: none;
+}
+
+#root {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #000000;
+  touch-action: none;
+  /* Extend background behind the bottom safe area (home indicator) */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  box-sizing: border-box;
 }
 
 * {
@@ -38,13 +53,31 @@ body,
   will-change: scroll-position;
 }
 
-/* Prevent rubber-banding on iOS standalone */
+/* Prevent rubber-banding on iOS standalone — force full-screen edge-to-edge */
 @media (display-mode: standalone) {
-  body {
+  html, body {
     position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
     width: 100%;
     height: 100%;
     overflow: hidden;
+  }
+
+  #root {
+    /* In standalone mode, extend fully to edges including bottom safe area */
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    height: 100%;
+    /* Use padding to push content above the home indicator but keep bg full */
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    box-sizing: border-box;
   }
 }
 
