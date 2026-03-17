@@ -384,7 +384,7 @@ export const MysteryBoxScreen: React.FC<MysteryBoxScreenProps> = ({
       </div>
 
       {/* ── Content ── */}
-      <div className="relative z-10 flex-1 min-h-0 flex flex-col items-center justify-start px-4 pt-1 pb-4 overflow-y-auto">
+      <div className="relative z-10 flex-1 min-h-0 flex flex-col items-center justify-start px-4 pt-1 pb-4 overflow-y-auto touch-auto">
         {phase === 'input' && (
           <InputPhase
             code={code}
@@ -671,7 +671,7 @@ const RevealedPhase: React.FC<{
 
   return (
     <div
-      className={`flex flex-col items-center w-full max-w-sm max-h-full overflow-y-auto overscroll-contain px-0.5 pb-6 transition-all duration-700 ${showReward ? 'opacity-100 scale-100' : 'opacity-0 scale-75'}`}
+      className={`flex flex-col items-center w-full max-w-sm max-h-full overflow-y-auto overscroll-contain touch-auto px-0.5 pb-10 transition-all duration-700 ${showReward ? 'opacity-100 scale-100' : 'opacity-0 scale-75'}`}
       style={{ WebkitOverflowScrolling: 'touch' }}
     >
       {/* ── Birthday Card Section ── */}
@@ -742,7 +742,7 @@ const RevealedPhase: React.FC<{
                 )}
 
                 {wishStep === 'input' && (
-                  <div className="space-y-2">
+                  <div className="space-y-2 flex flex-col pb-2">
                     <div className="grid grid-cols-2 gap-2">
                       <div>
                         <label className="text-[10px] text-purple-300/80 block mb-1">Tanggal Lahir</label>
@@ -784,26 +784,6 @@ const RevealedPhase: React.FC<{
                         color: '#e9d5ff',
                       }}
                     />
-                    <button
-                      onClick={submitWish}
-                      disabled={
-                        wishGenerating ||
-                        wishInput.trim().length < 3 ||
-                        !birthDay ||
-                        !birthMonth ||
-                        (parseInt(birthDay, 10) < 1 || parseInt(birthDay, 10) > 31) ||
-                        (parseInt(birthMonth, 10) < 1 || parseInt(birthMonth, 10) > 12)
-                      }
-                      className="w-full py-2.5 rounded-lg text-xs font-black uppercase tracking-wide disabled:opacity-50"
-                      style={{
-                        background: 'linear-gradient(180deg, #7c3aed 0%, #5b21b6 100%)',
-                        border: '1px solid rgba(192,132,252,0.5)',
-                        color: '#f5f3ff',
-                      }}
-                    >
-                      {wishGenerating ? '🧌 Goblin Bay lagi jawab...' : '✨ Kirim Wish ke Goblin Bay'}
-                    </button>
-
                     {wishGenerating && (
                       <div className="rounded-lg px-3 py-2 flex items-center gap-2"
                         style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(96,165,250,0.25)' }}
@@ -816,6 +796,26 @@ const RevealedPhase: React.FC<{
                         <p className="text-[11px] text-blue-200">Goblin Bay sedang merangkai jawaban romantis buat kamu... ✨</p>
                       </div>
                     )}
+
+                    <button
+                      onClick={submitWish}
+                      disabled={
+                        wishGenerating ||
+                        wishInput.trim().length < 3 ||
+                        !birthDay ||
+                        !birthMonth ||
+                        (parseInt(birthDay, 10) < 1 || parseInt(birthDay, 10) > 31) ||
+                        (parseInt(birthMonth, 10) < 1 || parseInt(birthMonth, 10) > 12)
+                      }
+                      className="w-full py-2.5 mt-2 rounded-lg text-xs font-black uppercase tracking-wide disabled:opacity-50"
+                      style={{
+                        background: 'linear-gradient(180deg, #7c3aed 0%, #5b21b6 100%)',
+                        border: '1px solid rgba(192,132,252,0.5)',
+                        color: '#f5f3ff',
+                      }}
+                    >
+                      {wishGenerating ? '🧌 Goblin Bay lagi jawab...' : '✨ Kirim Wish ke Goblin Bay'}
+                    </button>
                   </div>
                 )}
 
