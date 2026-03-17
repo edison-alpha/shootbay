@@ -3,6 +3,7 @@ import type { GameStoreData } from '../../store/gameStore';
 import { getTotalStars } from '../../store/gameStore';
 import { fetchLeaderboard } from '../../lib/gameService';
 import type { LeaderboardRow } from '../../lib/gameService';
+import { LeaderboardSkeleton } from '../ui/Skeleton';
 import dimsumImg from '../../assets/dimsum.png';
 import crownImg from '../../assets/underwater/Bonus/Crown.webp';
 import coinImg from '../../assets/underwater/Bonus/Coin.webp';
@@ -83,12 +84,11 @@ export const LeaderboardScreen: React.FC<LeaderboardScreenProps> = ({
       </div>
 
       {/* ── Content ── */}
-      <div className="relative z-10 flex-1 overflow-y-auto px-3 pb-4">
+      <div className="relative z-10 flex-1 overflow-y-auto scroll-native px-3 pb-4">
         {loading ? (
-          /* ── Loading State ── */
-          <div className="flex flex-col items-center justify-center h-full gap-3">
-            <div className="w-10 h-10 border-3 border-amber-400/30 border-t-amber-400 rounded-full animate-spin" />
-            <p className="text-sm font-bold text-amber-500/60">Loading leaderboard...</p>
+          /* ── Skeleton Loading State ── */
+          <div className="pt-4">
+            <LeaderboardSkeleton count={8} />
           </div>
         ) : entries.length === 0 ? (
           /* ── Empty State ── */

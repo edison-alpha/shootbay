@@ -113,7 +113,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
       </div>
 
       {/* ── Content ── */}
-      <div className="relative z-10 flex-1 overflow-y-auto px-3 pb-4 space-y-2.5">
+      <div className="relative z-10 flex-1 overflow-y-auto scroll-native px-3 pb-4 space-y-2.5">
 
         {/* ─ Audio Section ─ */}
         <SettingsSection title="Audio" icon={waterIcon}>

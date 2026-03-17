@@ -3,8 +3,10 @@ import type { GameStoreData, InventoryItem, MysteryBoxReward } from '../../store
 import { getTotalStars, getTicketProgress, redeemInventoryItem } from '../../store/gameStore';
 import { fetchUserInventory, fetchUserMysteryBoxes, fetchUserVoucherRedemptions } from '../../lib/gameService';
 import type { InventoryRow, MysteryBoxWithDetails, VoucherRedemptionRow } from '../../lib/gameService';
+import { InventorySkeleton } from '../ui/Skeleton';
 import { LEVELS } from '../../constants/levels';
 import { playClickSound, playRedeemSound } from '../../utils/uiAudio';
+import { hapticSuccess } from '../../utils/haptics';
 import dimsumImg from '../../assets/dimsum.png';
 import chestClosed from '../../assets/underwater/Neutral/æhest_closed.webp';
 import chestOpen from '../../assets/underwater/Neutral/æhest_open.webp';
@@ -763,12 +765,7 @@ const OverviewTab: React.FC<{
 
 const ItemsTab: React.FC<{ items: InventoryItem[]; loading: boolean; onSelectItem: (item: InventoryItem) => void }> = ({ items, loading, onSelectItem }) => {
   if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center h-64 gap-3">
-        <div className="w-8 h-8 border-2 border-amber-400/30 border-t-amber-400 rounded-full animate-spin" />
-        <p className="text-xs text-amber-500/60">Loading items...</p>
-      </div>
-    );
+    return <div className="pt-2"><InventorySkeleton count={6} /></div>;
   }
   if (items.length === 0) {
     return <EmptyState icon={shieldImg} title="No Items Yet" desc="Complete levels and open mystery boxes to get items!" />;
@@ -820,12 +817,7 @@ const REWARD_TYPE_CONFIG: Record<string, { label: string; badgeColor: string; ba
 
 const RewardsTab: React.FC<{ rewards: RewardView[]; loading: boolean; onSelectReward: (r: RewardView) => void }> = ({ rewards, loading, onSelectReward }) => {
   if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center h-64 gap-3">
-        <div className="w-8 h-8 border-2 border-amber-400/30 border-t-amber-400 rounded-full animate-spin" />
-        <p className="text-xs text-amber-500/60">Loading rewards...</p>
-      </div>
-    );
+    return <div className="pt-2"><InventorySkeleton count={4} /></div>;
   }
   if (rewards.length === 0) {
     return <EmptyState icon={chestOpen} title="No Rewards Yet" desc="Use tickets to open mystery boxes and collect rewards!" />;

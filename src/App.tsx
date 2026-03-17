@@ -74,17 +74,20 @@ import { supabase } from './lib/supabase';
 // ─── Helpers ────────────────────────────────────────────────────────────────
 import { playSoundEffect } from './utils/audio';
 import { playClickSound } from './utils/uiAudio';
+import { hapticLight, hapticMedium, hapticSuccess } from './utils/haptics';
+import { ScreenTransition } from './components/ui/ScreenTransition';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // App — thin orchestrator; all heavy lifting lives in hooks / engine
 // ═══════════════════════════════════════════════════════════════════════════
 export default function App() {
-  // ── Global click sound for all buttons/links ───────────────────────
+  // ── Global click sound + haptic for all buttons/links ───────────────
   useEffect(() => {
     const handler = (e: Event) => {
       const target = e.target as HTMLElement;
       if (target.closest('button') || target.closest('a') || target.closest('[role="button"]')) {
         playClickSound();
+        hapticLight();
       }
     };
     document.addEventListener('pointerdown', handler, true);
@@ -127,6 +130,8 @@ export default function App() {
   const [musicEnabled, setMusicEnabled] = useState(true);
 
   const realtimeSyncTimeoutRef = useRef<number | null>(null);
+  const userRealtimeReloadingRef = useRef(false);
+  const storeDataRef = useRef(storeData);
 
   // ── Refs ─────────────────────────────────────────────────────────────
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -682,16 +687,29 @@ export default function App() {
     gameRef.current.state = 'login';
   };
 
-  // ── Sync full game data to Supabase (debounced) ─────────────────────
+  // ── Sync full game data to Supabase (debounced — longer debounce reduces battery/network) ──
   useEffect(() => {
     if (!authUser || !storeData.profile) return;
 
+    // Debounce 800ms: faster than user can navigate away, but reduces write frequency
     const syncTimeout = setTimeout(() => {
       saveFullGameDataToSupabase(authUser.id, storeData).catch(console.error);
-    }, 400);
+    }, 800);
 
     return () => clearTimeout(syncTimeout);
   }, [authUser, storeData]);
+
+  useEffect(() => {
+    storeDataRef.current = storeData;
+  }, [storeData]);
+
+  // ── Lightweight change detection (avoids full JSON.stringify on every poll) ──
+  const storeHashRef = useRef('');
+  useEffect(() => {
+    // Cheap hash: concatenate key scalar values instead of full serialization
+    const d = storeData;
+    storeHashRef.current = `${d.totalDimsum}|${d.tickets}|${d.ticketsUsed}|${d.inventory.length}|${d.mysteryBoxRewards.length}|${d.redeemedCodes.length}|${Object.keys(d.levels).length}|${d.profile?.name ?? ''}|${d.profile?.characterId ?? ''}`;
+  }, [storeData]);
 
   // ── Realtime user data sync (profile, stats, boxes, inventory, vouchers) ──
   useEffect(() => {
@@ -703,9 +721,16 @@ export default function App() {
       }
 
       realtimeSyncTimeoutRef.current = window.setTimeout(() => {
+        if (userRealtimeReloadingRef.current) return;
+        userRealtimeReloadingRef.current = true;
         loadGameDataFromSupabase(authUser.id)
           .then((fresh) => {
             if (!fresh?.profile) return;
+
+            // Cheap hash comparison — avoids full JSON.stringify per sync
+            const freshHash = `${fresh.totalDimsum}|${fresh.tickets}|${fresh.ticketsUsed}|${fresh.inventory.length}|${fresh.mysteryBoxRewards.length}|${fresh.redeemedCodes.length}|${Object.keys(fresh.levels).length}|${fresh.profile?.name ?? ''}|${fresh.profile?.characterId ?? ''}`;
+            if (freshHash === storeHashRef.current) return;
+
             setStoreData(fresh);
             setPlayerName(fresh.profile.name);
             setSelectedCharacterId((fresh.profile.characterId || 'agree') as CharacterId);
@@ -713,11 +738,15 @@ export default function App() {
           })
           .catch(() => {
             // Keep current in-memory state on transient failures
+          })
+          .finally(() => {
+            userRealtimeReloadingRef.current = false;
           });
-      }, 250);
+      }, 150);
     };
 
-    // Fallback polling so data stays fresh even if realtime events are missed.
+    // Fallback polling — 15s (reduced from 7s to save battery/network on mobile)
+    // Realtime channel handles most updates; polling is just a safety net.
     const POLL_INTERVAL_MS = 15000;
     const pollInterval = window.setInterval(() => {
       scheduleReload();
@@ -732,6 +761,9 @@ export default function App() {
     window.addEventListener('focus', handleVisibilityOrFocus);
     window.addEventListener('online', handleVisibilityOrFocus);
     document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+
+    // Initial background sync after auth is ready.
+    scheduleReload();
 
     const channel = supabase
       .channel(`user-realtime:${authUser.id}`)
@@ -786,13 +818,13 @@ export default function App() {
       {/* Canvas (always mounted so the game loop ref stays alive) */}
       <canvas ref={canvasRef} className="absolute inset-0 block" />
 
-      {/* ── Intro ────────────────────────────────────────────────────── */}
+      {/* ── Intro (no transition — has own fade) ──────────────────────── */}
       {gameState === 'intro' && (
         <IntroScreen loadingProgress={loadingProgress} fading={introFading} />
       )}
 
       {/* ── Signup ────────────────────────────────────────────────────── */}
-      {gameState === 'signup' && (
+      <ScreenTransition show={gameState === 'signup'} type="fade" duration={200}>
         <SignupScreen
           onSignupSuccess={handleSignupSuccess}
           onGoToLogin={() => {
@@ -804,10 +836,10 @@ export default function App() {
             gameRef.current.state = 'adminDashboard';
           }}
         />
-      )}
+      </ScreenTransition>
 
       {/* ── Login ──────────────────────────────────────────────────────── */}
-      {gameState === 'login' && (
+      <ScreenTransition show={gameState === 'login'} type="fade" duration={200}>
         <LoginScreen
           onLoginSuccess={handleLoginSuccess}
           onGoToSignup={() => {
@@ -819,29 +851,29 @@ export default function App() {
             gameRef.current.state = 'adminDashboard';
           }}
         />
-      )}
+      </ScreenTransition>
 
       {/* ── Admin Dashboard ────────────────────────────────────────────── */}
-      {gameState === 'adminDashboard' && (
+      <ScreenTransition show={gameState === 'adminDashboard'} type="slide-left" duration={250}>
         <AdminDashboard
           onBack={() => {
             setGameState('login');
             gameRef.current.state = 'login';
           }}
         />
-      )}
+      </ScreenTransition>
 
       {/* ── Name Entry ───────────────────────────────────────────────── */}
-      {gameState === 'nameEntry' && (
+      <ScreenTransition show={gameState === 'nameEntry'} type="slide-left" duration={220}>
         <NameEntryScreen
           playerName={playerName}
           onChange={setPlayerName}
           onSubmit={continueFromName}
         />
-      )}
+      </ScreenTransition>
 
       {/* ── Photo Capture ────────────────────────────────────────────── */}
-      {gameState === 'photoCapture' && (
+      <ScreenTransition show={gameState === 'photoCapture'} type="slide-left" duration={220}>
         <PhotoCaptureScreen
           playerName={playerName}
           profilePhoto={camera.profilePhoto}
@@ -853,14 +885,15 @@ export default function App() {
           onRetake={() => camera.setProfilePhoto(null)}
           onContinue={startGame}
         />
-      )}
+      </ScreenTransition>
 
       {/* ── Character Select ─────────────────────────────────────────── */}
-      {gameState === 'characterSelect' && (
+      <ScreenTransition show={gameState === 'characterSelect'} type="scale" duration={250}>
         <CharacterSelectScreen
           selectedId={selectedCharacterId}
           onSelect={setSelectedCharacterId}
           onContinue={() => {
+            hapticMedium();
             // First time → tutorial, returning → main menu
             if (!storeData.profile) {
               setGameState('tutorial');
@@ -870,25 +903,26 @@ export default function App() {
             }
           }}
         />
-      )}
+      </ScreenTransition>
 
       {/* ── Tutorial ─────────────────────────────────────────────────── */}
-      {gameState === 'tutorial' && (
+      <ScreenTransition show={gameState === 'tutorial'} type="slide-left" duration={250}>
         <TutorialScreen
           onContinue={() => {
             goToMainMenu();
           }}
         />
-      )}
+      </ScreenTransition>
 
       {/* ── Main Menu (Hub) ──────────────────────────────────────────── */}
-      {gameState === 'mainMenu' && (
+      <ScreenTransition show={gameState === 'mainMenu'} type="fade" duration={200}>
         <MainMenuScreen
           storeData={storeData}
           playerName={playerName}
           profilePhoto={camera.profilePhoto}
           characterImage={selectedCharacter.image}
           onPlay={() => {
+            hapticMedium();
             setGameState('levelSelect');
             gameRef.current.state = 'levelSelect';
           }}
@@ -913,13 +947,14 @@ export default function App() {
             gameRef.current.state = 'characterSelect';
           }}
         />
-      )}
+      </ScreenTransition>
 
       {/* ── Level Select ─────────────────────────────────────────────── */}
-      {gameState === 'levelSelect' && (
+      <ScreenTransition show={gameState === 'levelSelect'} type="slide-left" duration={250}>
         <LevelSelectScreen
           storeData={storeData}
           onSelectLevel={(levelId) => {
+            hapticMedium();
             setCurrentLevelId(levelId);
             setDialogueIndex(0);
             // Quick start: skip dialogue for replayed levels
@@ -936,10 +971,10 @@ export default function App() {
             gameRef.current.state = 'mainMenu';
           }}
         />
-      )}
+      </ScreenTransition>
 
       {/* ── Leaderboard ──────────────────────────────────────────────── */}
-      {gameState === 'leaderboard' && (
+      <ScreenTransition show={gameState === 'leaderboard'} type="slide-left" duration={250}>
         <LeaderboardScreen
           storeData={storeData}
           userId={authUser?.id}
@@ -948,10 +983,10 @@ export default function App() {
             gameRef.current.state = 'mainMenu';
           }}
         />
-      )}
+      </ScreenTransition>
 
       {/* ── Inventory ────────────────────────────────────────────────── */}
-      {gameState === 'inventory' && (
+      <ScreenTransition show={gameState === 'inventory'} type="slide-left" duration={250}>
         <InventoryScreen
           storeData={storeData}
           userId={authUser?.id}
@@ -961,10 +996,10 @@ export default function App() {
           }}
           onDataChange={(updated) => setStoreData(updated)}
         />
-      )}
+      </ScreenTransition>
 
       {/* ── Mystery Box ──────────────────────────────────────────────── */}
-      {gameState === 'mysteryBox' && (
+      <ScreenTransition show={gameState === 'mysteryBox'} type="slide-up" duration={280}>
         <MysteryBoxScreen
           storeData={storeData}
           onDataChange={setStoreData}
@@ -973,15 +1008,16 @@ export default function App() {
             gameRef.current.state = 'mainMenu';
           }}
           onSpinWheel={() => {
+            hapticSuccess();
             setGameState('spinWheel');
             gameRef.current.state = 'spinWheel';
           }}
           userId={authUser?.id}
         />
-      )}
+      </ScreenTransition>
 
       {/* ── Spin Wheel ─────────────────────────────────────────────── */}
-      {gameState === 'spinWheel' && (
+      <ScreenTransition show={gameState === 'spinWheel'} type="scale" duration={300}>
         <SpinWheelScreen
           storeData={storeData}
           onDataChange={setStoreData}
@@ -991,10 +1027,10 @@ export default function App() {
             gameRef.current.state = 'mainMenu';
           }}
         />
-      )}
+      </ScreenTransition>
 
       {/* ── Settings ─────────────────────────────────────────────────── */}
-      {gameState === 'settings' && (
+      <ScreenTransition show={gameState === 'settings'} type="slide-left" duration={250}>
         <SettingsScreen
           storeData={storeData}
           onDataChange={setStoreData}
@@ -1011,10 +1047,10 @@ export default function App() {
           onEditPhoto={handleEditPhoto}
           onReplayTutorial={handleReplayTutorial}
         />
-      )}
+      </ScreenTransition>
 
       {/* ── Opening Dialogue ─────────────────────────────────────────── */}
-      {gameState === 'dialogue' && (
+      <ScreenTransition show={gameState === 'dialogue'} type="fade" duration={200}>
         <DialogueScreen
           messages={dialogueMessages}
           currentIndex={dialogueIndex}
@@ -1026,10 +1062,10 @@ export default function App() {
           finalLabel="Start Level"
           zIndex={70}
         />
-      )}
+      </ScreenTransition>
 
       {/* ── Milestone Dialogue ───────────────────────────────────────── */}
-      {gameState === 'milestoneDialogue' && milestoneDialogues.length > 0 && (
+      <ScreenTransition show={gameState === 'milestoneDialogue' && milestoneDialogues.length > 0} type="fade" duration={200}>
         <DialogueScreen
           messages={milestoneDialogues}
           currentIndex={milestoneDialogueIndex}
@@ -1041,10 +1077,10 @@ export default function App() {
           finalLabel="Continue"
           zIndex={72}
         />
-      )}
+      </ScreenTransition>
 
       {/* ── Battle Loading Screen ──────────────────────────────────── */}
-      {gameState === 'battleLoading' && (
+      <ScreenTransition show={gameState === 'battleLoading'} type="fade" duration={200}>
         <BattleLoadingScreen
           levelName={currentLevel?.name || 'Unknown'}
           levelNumber={currentLevelId}
@@ -1053,7 +1089,7 @@ export default function App() {
           characterName={selectedCharacter.name}
           onReady={onBattleReady}
         />
-      )}
+      </ScreenTransition>
 
       {/* ── Playing HUD ──────────────────────────────────────────────── */}
       {gameState === 'playing' && (
@@ -1115,17 +1151,17 @@ export default function App() {
       )}
 
       {/* ── Wish ─────────────────────────────────────────────────────── */}
-      {gameState === 'wish' && (
+      <ScreenTransition show={gameState === 'wish'} type="slide-up" duration={250}>
         <WishScreen
           milestone={currentWishMilestone}
           wishInput={wishInput}
           onWishChange={setWishInput}
           onSubmit={submitWish}
         />
-      )}
+      </ScreenTransition>
 
       {/* ── Game Over ────────────────────────────────────────────────── */}
-      {gameState === 'gameover' && (
+      <ScreenTransition show={gameState === 'gameover'} type="scale" duration={300}>
         <GameOverScreen
           score={score}
           dimsumCollected={dimsumCollected}
@@ -1137,25 +1173,27 @@ export default function App() {
             audio.stopBackgroundMusic();
           }}
         />
-      )}
+      </ScreenTransition>
 
       {/* ── Level Complete ────────────────────────────────────────────── */}
-      {gameState === 'levelComplete' && currentLevel && (
-        <LevelCompleteScreen
-          levelConfig={currentLevel}
-          dimsumCollected={dimsumCollected}
-          timeTaken={Math.floor(levelTimeElapsed)}
-          previousBest={storeData.levels[currentLevelId]?.bestTime ?? 0}
-          ticketEarned={storeData.tickets > previousTickets}
-          onNextLevel={handleLevelComplete_NextLevel}
-          onRetry={handleLevelComplete_Retry}
-          onMenu={handleLevelComplete_Menu}
-          hasNextLevel={currentLevelId < LEVELS.length}
-        />
-      )}
+      <ScreenTransition show={gameState === 'levelComplete' && !!currentLevel} type="scale" duration={300}>
+        {currentLevel && (
+          <LevelCompleteScreen
+            levelConfig={currentLevel}
+            dimsumCollected={dimsumCollected}
+            timeTaken={Math.floor(levelTimeElapsed)}
+            previousBest={storeData.levels[currentLevelId]?.bestTime ?? 0}
+            ticketEarned={storeData.tickets > previousTickets}
+            onNextLevel={handleLevelComplete_NextLevel}
+            onRetry={handleLevelComplete_Retry}
+            onMenu={handleLevelComplete_Menu}
+            hasNextLevel={currentLevelId < LEVELS.length}
+          />
+        )}
+      </ScreenTransition>
 
       {/* ── Birthday / Victory ─────────────────────────────────────────── */}
-      {gameState === 'birthday' && (
+      <ScreenTransition show={gameState === 'birthday'} type="scale" duration={350}>
         <BirthdayScreen
           playerName={playerName}
           wishes={wishes}
@@ -1169,7 +1207,7 @@ export default function App() {
             gameRef.current.state = 'mainMenu';
           }}
         />
-      )}
+      </ScreenTransition>
     </div>
   );
 }

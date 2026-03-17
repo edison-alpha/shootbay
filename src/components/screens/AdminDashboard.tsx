@@ -327,7 +327,7 @@ const AdminPanel: React.FC<{ admin: AuthUser; onLogout: () => void }> = ({ admin
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={refreshData}
+            onClick={() => refreshData()}
             className="px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-xs font-bold text-gray-300 transition"
           >
             🔄 Refresh
