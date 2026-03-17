@@ -257,6 +257,22 @@ const AdminPanel: React.FC<{ admin: AuthUser; onLogout: () => void }> = ({ admin
       }, 250);
     };
 
+    // Fallback polling so admin data still refreshes when realtime events are delayed/missed.
+    const POLL_INTERVAL_MS = 10000;
+    const pollInterval = window.setInterval(() => {
+      refreshData().catch(console.error);
+    }, POLL_INTERVAL_MS);
+
+    const handleVisibilityOrFocus = () => {
+      if (document.visibilityState === 'visible') {
+        refreshData().catch(console.error);
+      }
+    };
+
+    window.addEventListener('focus', handleVisibilityOrFocus);
+    window.addEventListener('online', handleVisibilityOrFocus);
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+
     const channel = supabase
       .channel('admin-dashboard-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'mystery_boxes' }, scheduleRefresh)
@@ -270,6 +286,10 @@ const AdminPanel: React.FC<{ admin: AuthUser; onLogout: () => void }> = ({ admin
       .subscribe();
 
     return () => {
+      clearInterval(pollInterval);
+      window.removeEventListener('focus', handleVisibilityOrFocus);
+      window.removeEventListener('online', handleVisibilityOrFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
       if (refreshTimeoutRef.current) {
         clearTimeout(refreshTimeoutRef.current);
         refreshTimeoutRef.current = null;

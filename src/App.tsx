@@ -717,6 +717,22 @@ export default function App() {
       }, 250);
     };
 
+    // Fallback polling so data stays fresh even if realtime events are missed.
+    const POLL_INTERVAL_MS = 15000;
+    const pollInterval = window.setInterval(() => {
+      scheduleReload();
+    }, POLL_INTERVAL_MS);
+
+    const handleVisibilityOrFocus = () => {
+      if (document.visibilityState === 'visible') {
+        scheduleReload();
+      }
+    };
+
+    window.addEventListener('focus', handleVisibilityOrFocus);
+    window.addEventListener('online', handleVisibilityOrFocus);
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+
     const channel = supabase
       .channel(`user-realtime:${authUser.id}`)
       .on('postgres_changes', {
@@ -752,6 +768,10 @@ export default function App() {
       .subscribe();
 
     return () => {
+      clearInterval(pollInterval);
+      window.removeEventListener('focus', handleVisibilityOrFocus);
+      window.removeEventListener('online', handleVisibilityOrFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
       if (realtimeSyncTimeoutRef.current) {
         clearTimeout(realtimeSyncTimeoutRef.current);
         realtimeSyncTimeoutRef.current = null;
