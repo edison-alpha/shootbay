@@ -238,6 +238,7 @@ export async function updateMysteryBox(
     .from('mystery_boxes')
     .update(safeUpdates as never)
     .eq('id', boxId)
+    .neq('status', 'opened')
     .select()
     .single();
 
@@ -252,7 +253,8 @@ export async function deleteMysteryBox(boxId: string): Promise<boolean> {
   const { error } = await supabase
     .from('mystery_boxes')
     .delete()
-    .eq('id', boxId);
+    .eq('id', boxId)
+    .neq('status', 'opened');
 
   if (error) {
     console.error('Delete mystery box error:', error);

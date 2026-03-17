@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import type { GameStoreData, MysteryBoxReward } from '../../store/gameStore';
-import { saveGameData, redeemCode, isBirthdayCode } from '../../store/gameStore';
+import { saveGameData } from '../../store/gameStore';
 import { redeemMysteryBoxByCode, fetchUserMysteryBoxes, updateMysteryBoxWishFlow } from '../../lib/gameService';
 import type { MysteryBoxWithDetails } from '../../lib/gameService';
 import chestClosed from '../../assets/underwater/Neutral/æhest_closed.webp';
@@ -24,7 +24,6 @@ interface MysteryBoxScreenProps {
 
 type Phase = 'input' | 'opening' | 'revealed' | 'history';
 
-// Reward type for local birthday code redemption
 interface LocalRedeemResult {
   reward: MysteryBoxReward;
   extraRewards?: MysteryBoxReward[];
@@ -179,33 +178,6 @@ export const MysteryBoxScreen: React.FC<MysteryBoxScreenProps> = ({
     }
 
     const trimmedCode = code.trim();
-    const isBday = isBirthdayCode(trimmedCode);
-
-    // Birthday codes can be redeemed locally without Supabase
-    if (isBday) {
-      setLoading(true);
-      try {
-        if (storeData.redeemedCodes.includes(trimmedCode.toUpperCase())) {
-          setError('This birthday code has already been used! 🎂');
-          setLoading(false);
-          return;
-        }
-
-        const result = redeemCode(storeData, trimmedCode);
-        if (!result) {
-          setError('Unable to redeem this code');
-          setLoading(false);
-          return;
-        }
-
-        onDataChange(result.data);
-        setLocalReward({ reward: result.reward, extraRewards: result.extraRewards });
-        setPhase('opening');
-      } finally {
-        setLoading(false);
-      }
-      return;
-    }
 
     // Non-birthday codes — use Supabase flow
     if (!userId) {
@@ -444,8 +416,6 @@ const InputPhase: React.FC<{
   onRedeem: () => void;
   onSpinWheel?: () => void;
 }> = ({ code, onCodeChange, error, loading, pendingCount, spinTicketCount, onRedeem, onSpinWheel }) => {
-  const isBday = code.toUpperCase().startsWith('BDAY') || code.toUpperCase().startsWith('HBD') || code.toUpperCase().startsWith('ULTAH');
-
   return (
     <div className="w-full max-w-xs space-y-4">
       {/* Chest Display */}
@@ -454,7 +424,7 @@ const InputPhase: React.FC<{
           style={{ filter: 'drop-shadow(0 6px 12px rgba(0,0,0,0.5))', animation: 'chestFloat 2s ease-in-out infinite' }}
         />
         <p className="text-sm font-bold text-amber-300 text-center">Enter your code to open!</p>
-        <p className="text-[10px] text-amber-600/60 text-center mt-1">Need 1 ticket + code from admin • Birthday codes are free! 🎂</p>
+        <p className="text-[10px] text-amber-600/60 text-center mt-1">Need 1 ticket + code from admin</p>
       </div>
 
       {/* Pending boxes notification */}
@@ -492,7 +462,7 @@ const InputPhase: React.FC<{
       <div className="rounded-xl p-3"
         style={{
           background: 'linear-gradient(135deg, rgba(62,40,20,0.85) 0%, rgba(40,26,12,0.9) 100%)',
-          border: `2px solid ${isBday ? 'rgba(192,132,252,0.4)' : 'rgba(180,140,60,0.3)'}`,
+          border: '2px solid rgba(180,140,60,0.3)',
         }}
       >
         <label className="text-[9px] font-bold text-amber-500/70 uppercase tracking-wider mb-1.5 block">
@@ -502,16 +472,13 @@ const InputPhase: React.FC<{
           type="text"
           value={code}
           onChange={e => onCodeChange(e.target.value.toUpperCase())}
-          placeholder="MB-XXXXXXXX or BDAY..."
+          placeholder="MB-XXXXXXXX"
           className="w-full px-3 py-2.5 rounded-lg text-sm font-bold text-amber-200 placeholder-amber-800/40 text-center tracking-[0.2em] outline-none"
           style={{
             background: 'rgba(0,0,0,0.4)',
             border: '1px solid rgba(180,140,60,0.2)',
           }}
         />
-        {isBday && (
-          <p className="text-[10px] text-purple-400/70 text-center mt-2 font-bold">🎂 Birthday code detected! No ticket needed</p>
-        )}
         {error && (
           <p className="text-[10px] text-red-400 text-center mt-2 font-bold">{error}</p>
         )}
@@ -523,9 +490,8 @@ const InputPhase: React.FC<{
         className="w-full py-3 rounded-xl text-sm font-black uppercase tracking-widest transition active:scale-[0.97] flex items-center justify-center gap-2"
         style={{
           background: loading ? 'rgba(60,40,20,0.5)'
-            : isBday ? 'linear-gradient(180deg, #7c3aed 0%, #5b21b6 100%)'
             : 'linear-gradient(180deg, #b45309 0%, #78350f 100%)',
-          border: `2px solid ${loading ? 'rgba(80,60,30,0.2)' : isBday ? 'rgba(192,132,252,0.5)' : 'rgba(251,191,36,0.4)'}`,
+          border: `2px solid ${loading ? 'rgba(80,60,30,0.2)' : 'rgba(251,191,36,0.4)'}`,
           boxShadow: loading ? 'none' : '0 4px 12px rgba(180,100,10,0.3), inset 0 1px 0 rgba(255,215,0,0.15)',
           color: loading ? 'rgba(180,140,60,0.3)' : '#fef3c7',
           textShadow: loading ? 'none' : '0 2px 4px rgba(0,0,0,0.5)',
@@ -537,7 +503,7 @@ const InputPhase: React.FC<{
         ) : (
           <>
             <img src={chestClosed} alt="" className="w-5 h-5" style={{ filter: 'brightness(1.3)' }} />
-            {isBday ? '🎂 Open Birthday Box' : 'Open Box'}
+            Open Box
           </>
         )}
       </button>
@@ -1090,6 +1056,18 @@ const HistoryPhase: React.FC<{
                 <p className="text-[9px] text-amber-500/50 font-mono">
                   {box.redemption_code}
                 </p>
+                <button
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(box.redemption_code || '');
+                    } catch {
+                      // ignore clipboard failure silently
+                    }
+                  }}
+                  className="mt-1 text-[9px] font-bold px-2 py-0.5 rounded bg-amber-900/30 text-amber-300"
+                >
+                  📋 Copy Code
+                </button>
                 {/* Tags for multi-content boxes */}
                 <div className="flex gap-1 mt-0.5">
                   {hasCard && (

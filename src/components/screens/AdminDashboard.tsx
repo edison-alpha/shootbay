@@ -851,7 +851,7 @@ const MysteryBoxTab: React.FC<{
     if (!form.name.trim()) return;
 
     if (editingBox) {
-      await updateMysteryBox(editingBox.id, {
+      const updated = await updateMysteryBox(editingBox.id, {
         name: form.name,
         description: form.description,
         prize_id: form.prize_id || null,
@@ -863,6 +863,10 @@ const MysteryBoxTab: React.FC<{
         status: form.assigned_to ? 'delivered' : 'pending',
         updated_at: new Date().toISOString(),
       });
+      if (!updated) {
+        alert('Gagal update mystery box. Pastikan box belum opened dan policy Supabase mengizinkan update.');
+        return;
+      }
       resetForm();
       onRefresh();
       return;
@@ -912,7 +916,7 @@ const MysteryBoxTab: React.FC<{
 
     if (!form.assigned_to) return;
 
-    await createMysteryBox({
+    const created = await createMysteryBox({
       name: form.name,
       description: form.description,
       prize_id: form.prize_id || null,
@@ -922,13 +926,27 @@ const MysteryBoxTab: React.FC<{
       assigned_to: form.assigned_to || null,
       custom_message: form.custom_message || null,
     }, adminId);
+    if (!created) {
+      alert('Gagal membuat mystery box. Cek policy/permission di Supabase.');
+      return;
+    }
     resetForm();
     onRefresh();
   };
 
   const handleDelete = async (id: string) => {
+    const target = boxes.find((b) => b.id === id);
+    if (target?.status === 'opened') {
+      alert('Opened box tidak bisa dihapus. Hanya box delivered/pending/expired yang bisa dihapus.');
+      return;
+    }
+
     if (confirm('Delete this mystery box?')) {
-      await deleteMysteryBox(id);
+      const ok = await deleteMysteryBox(id);
+      if (!ok) {
+        alert('Gagal menghapus mystery box. Cek policy/permission di Supabase.');
+        return;
+      }
       onRefresh();
     }
   };
@@ -955,10 +973,14 @@ const MysteryBoxTab: React.FC<{
     const nextStatus = box.status === 'expired'
       ? (box.assigned_to ? 'delivered' : 'pending')
       : 'expired';
-    await updateMysteryBox(box.id, {
+    const updated = await updateMysteryBox(box.id, {
       status: nextStatus,
       updated_at: new Date().toISOString(),
     });
+    if (!updated) {
+      alert('Gagal mengubah status box. Cek policy/permission di Supabase.');
+      return;
+    }
     onRefresh();
   };
 

@@ -297,6 +297,41 @@ export interface Database {
           updated_at?: string;
         };
       };
+      voucher_redemptions: {
+        Row: {
+          id: string;
+          user_id: string;
+          source_type: string;
+          status: 'pending' | 'sent' | 'redeemed' | 'cancelled';
+          voucher_code: string | null;
+          prizes_text: string;
+          message: string;
+          metadata: Record<string, unknown>;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          source_type?: string;
+          status?: 'pending' | 'sent' | 'redeemed' | 'cancelled';
+          voucher_code?: string | null;
+          prizes_text: string;
+          message: string;
+          metadata?: Record<string, unknown>;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          source_type?: string;
+          status?: 'pending' | 'sent' | 'redeemed' | 'cancelled';
+          voucher_code?: string | null;
+          prizes_text?: string;
+          message?: string;
+          metadata?: Record<string, unknown>;
+          updated_at?: string;
+        };
+      };
       inventory: {
         Row: {
           id: string;
@@ -385,3 +420,6 @@ export type LeaderboardEntry = Database['public']['Tables']['leaderboard']['Row'
 export type SpinWheelPrize = Database['public']['Tables']['spin_wheel_prizes']['Row'];
 export type SpinWheelPrizeInsert = Database['public']['Tables']['spin_wheel_prizes']['Insert'];
 export type SpinWheelPrizeUpdate = Database['public']['Tables']['spin_wheel_prizes']['Update'];
+export type VoucherRedemption = Database['public']['Tables']['voucher_redemptions']['Row'];
+export type VoucherRedemptionInsert = Database['public']['Tables']['voucher_redemptions']['Insert'];
+export type VoucherRedemptionUpdate = Database['public']['Tables']['voucher_redemptions']['Update'];

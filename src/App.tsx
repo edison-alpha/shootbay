@@ -893,6 +893,7 @@ export default function App() {
         <SpinWheelScreen
           storeData={storeData}
           onDataChange={setStoreData}
+          userId={authUser?.id}
           onBack={() => {
             setGameState('mainMenu');
             gameRef.current.state = 'mainMenu';

@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import type { GameStoreData } from '../../store/gameStore';
 import { saveGameData } from '../../store/gameStore';
-import { fetchSpinWheelPrizes } from '../../lib/gameService';
+import { fetchSpinWheelPrizes, createVoucherRedemption, updateVoucherRedemptionStatus } from '../../lib/gameService';
 import type { SpinWheelPrizeRow } from '../../lib/gameService';
 import { playClickSound, playSpinStartSound, playSpinTickSound, playWinSound } from '../../utils/uiAudio';
 import arenaBg from '../../assets/arena_background.webp';
@@ -48,6 +48,7 @@ interface SpinWheelScreenProps {
   storeData: GameStoreData;
   onDataChange: (data: GameStoreData) => void;
   onBack: () => void;
+  userId?: string;
 }
 
 const WA_REDEEM_URL = 'https://wa.me/6285777131454';
@@ -103,6 +104,7 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
   storeData,
   onDataChange,
   onBack,
+  userId,
 }) => {
   const availableSpins = storeData.mysteryBoxRewards
     .filter((r) => r.type === 'spin_ticket')
@@ -115,6 +117,7 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
   const [currentSpin, setCurrentSpin] = useState(0);
   const [collectedResults, setCollectedResults] = useState<SpinResult[]>([]);
   const [currentResult, setCurrentResult] = useState<SpinResult | null>(null);
+  const [sendingWA, setSendingWA] = useState(false);
   // Canvas-based wheel for precise rendering
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rotationRef = useRef(0);
@@ -507,12 +510,122 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
     return seg.img || FALLBACK_IMAGES[seg.label.toLowerCase()] || dimsumImg;
   };
 
-  const waVoucherMessage = encodeURIComponent(
-    `Hai, saya ingin tukarkan voucher hadiah spin wheel.\n\nHadiah: ${spinResults
-      .filter(r => r.segment.prizeType !== 'dimsum_bonus')
-      .map(r => `${r.segment.icon || '🎁'} ${r.segment.name || r.segment.label}`)
-      .join(', ') || 'Tidak ada hadiah fisik'}\n\nKode: BAYUGANTENG`,
-  );
+  const generateProfessionalWAMessage = useCallback(async () => {
+    const physicalPrizes = spinResults
+      .filter((r) => r.segment.prizeType !== 'dimsum_bonus')
+      .map((r) => `${r.segment.icon || '🎁'} ${r.segment.name || r.segment.label}`);
+
+    const dimsumTotal = spinResults
+      .filter((r) => r.segment.prizeType === 'dimsum_bonus')
+      .reduce((sum, r) => sum + (r.segment.value || 2), 0);
+
+    const prizeSummary = physicalPrizes.length > 0
+      ? physicalPrizes.join(', ')
+      : 'Tidak ada hadiah fisik (hanya bonus dimsum)';
+
+    const prompt = [
+      'Buat pesan WhatsApp berbahasa Indonesia yang profesional, panjang, sopan, dan hangat.',
+      'Tujuan: konfirmasi penukaran voucher hadiah lucky spin ke admin.',
+      'Format: salam pembuka, detail hadiah, kode voucher, penutup.',
+      'Wajib ada ucapan ulang tahun yang tulus dan elegan.',
+      `Hadiah fisik: ${prizeSummary}`,
+      `Bonus dimsum: +${dimsumTotal}`,
+      'Kode voucher: BAYUGANTENG',
+      'Gaya bahasa formal namun tetap ramah.',
+    ].join('\n');
+
+    const atxpConnection = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env?.VITE_ATXP_CONNECTION;
+    if (atxpConnection) {
+      try {
+        const res = await fetch('https://llm.atxp.ai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${atxpConnection}`,
+          },
+          body: JSON.stringify({
+            model: 'gpt-4.1',
+            messages: [
+              { role: 'system', content: 'Kamu asisten penulis pesan WhatsApp profesional berbahasa Indonesia.' },
+              { role: 'user', content: prompt },
+            ],
+            temperature: 0.7,
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json() as { choices?: Array<{ message?: { content?: string } }> };
+          const text = data.choices?.[0]?.message?.content?.trim();
+          if (text) return text;
+        }
+      } catch {
+        // fallback below
+      }
+    }
+
+    return [
+      'Halo Admin Tim Hadiah,',
+      '',
+      'Perkenalkan, saya pemenang program Lucky Spin dan ingin melakukan konfirmasi penukaran voucher hadiah dengan rincian berikut:',
+      '',
+      `• Hadiah fisik: ${prizeSummary}`,
+      `• Bonus dimsum: +${dimsumTotal}`,
+      '• Kode voucher: BAYUGANTENG',
+      '',
+      'Mohon bantuannya untuk proses verifikasi dan informasi mekanisme penukaran hadiah selanjutnya.',
+      '',
+      'Sekaligus saya ingin menyampaikan ucapan ulang tahun yang tulus: semoga di hari istimewa ini senantiasa diberi kesehatan, kebahagiaan, kelancaran rezeki, serta keberhasilan dalam setiap langkah ke depan.',
+      '',
+      'Terima kasih atas perhatian dan pelayanannya. Saya menunggu konfirmasi dari tim admin.',
+      '',
+      'Hormat saya,',
+      'Player Lucky Spin',
+    ].join('\n');
+  }, [spinResults]);
+
+  const handleSendVoucherToWhatsApp = useCallback(async () => {
+    if (sendingWA) return;
+    setSendingWA(true);
+    try {
+      const msg = await generateProfessionalWAMessage();
+
+      const physicalPrizes = spinResults
+        .filter((r) => r.segment.prizeType !== 'dimsum_bonus')
+        .map((r) => `${r.segment.icon || '🎁'} ${r.segment.name || r.segment.label}`);
+      const prizesText = physicalPrizes.length > 0
+        ? physicalPrizes.join(', ')
+        : 'Tidak ada hadiah fisik (hanya bonus dimsum)';
+
+      let redemptionId: string | null = null;
+      if (userId) {
+        const row = await createVoucherRedemption({
+          userId,
+          sourceType: 'spin_wheel',
+          status: 'pending',
+          voucherCode: 'BAYUGANTENG',
+          prizesText,
+          message: msg,
+          metadata: {
+            spin_results: spinResults.map((r) => ({
+              id: r.segment.id,
+              label: r.segment.label,
+              name: r.segment.name || r.segment.label,
+              prize_type: r.segment.prizeType,
+              value: r.segment.value,
+            })),
+          },
+        });
+        redemptionId = row?.id || null;
+      }
+
+      window.open(`${WA_REDEEM_URL}?text=${encodeURIComponent(msg)}`, '_blank', 'noopener,noreferrer');
+
+      if (redemptionId) {
+        await updateVoucherRedemptionStatus(redemptionId, 'sent');
+      }
+    } finally {
+      setSendingWA(false);
+    }
+  }, [generateProfessionalWAMessage, sendingWA, spinResults, userId]);
 
   return (
     <div className="absolute inset-0 z-50 flex flex-col overflow-hidden"
@@ -790,11 +903,10 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
               </div>
             )}
 
-            <a
-              href={`${WA_REDEEM_URL}?text=${waVoucherMessage}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="w-full py-3 rounded-xl text-sm font-black uppercase tracking-wider transition active:scale-95 flex items-center justify-center"
+            <button
+              onClick={handleSendVoucherToWhatsApp}
+              disabled={sendingWA}
+              className="w-full py-3 rounded-xl text-sm font-black uppercase tracking-wider transition active:scale-95 flex items-center justify-center disabled:opacity-60"
               style={{
                 background: 'linear-gradient(180deg, #059669 0%, #047857 100%)',
                 border: '2px solid rgba(52,211,153,0.5)',
@@ -803,8 +915,8 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
                 textShadow: '0 1px 2px rgba(0,0,0,0.3)',
               }}
             >
-              🎫 Tukarkan Voucher (WhatsApp)
-            </a>
+              {sendingWA ? '🤖 Menyiapkan pesan AI...' : '🎫 Tukarkan Voucher'}
+            </button>
 
             <button onClick={onBack} className="mt-2 text-xs text-amber-500/60 underline">
               Skip for now

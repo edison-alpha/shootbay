@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import type { GameStoreData, InventoryItem, MysteryBoxReward } from '../../store/gameStore';
 import { getTotalStars, getTicketProgress, redeemInventoryItem } from '../../store/gameStore';
-import { fetchUserInventory, fetchUserMysteryBoxes } from '../../lib/gameService';
-import type { InventoryRow, MysteryBoxWithDetails } from '../../lib/gameService';
+import { fetchUserInventory, fetchUserMysteryBoxes, fetchUserVoucherRedemptions } from '../../lib/gameService';
+import type { InventoryRow, MysteryBoxWithDetails, VoucherRedemptionRow } from '../../lib/gameService';
 import { LEVELS } from '../../constants/levels';
 import { playClickSound, playRedeemSound } from '../../utils/uiAudio';
 import dimsumImg from '../../assets/dimsum.png';
@@ -32,6 +32,13 @@ interface InventoryScreenProps {
 
 type TabId = 'overview' | 'items' | 'rewards' | 'tickets';
 
+type RewardView = MysteryBoxReward & {
+  waStatus?: VoucherRedemptionRow['status'];
+  waMessage?: string;
+  waVoucherCode?: string | null;
+  waCreatedAt?: string;
+};
+
 // Map item IDs to actual images
 const ITEM_IMAGES: Record<string, string> = {
   spin_jam: jamImg, spin_sepatu: shoesImg, spin_baju: bajuImg, spin_dimsum: dimsumImg,
@@ -49,9 +56,10 @@ export const InventoryScreen: React.FC<InventoryScreenProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<TabId>('overview');
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
-  const [selectedReward, setSelectedReward] = useState<MysteryBoxReward | null>(null);
+  const [selectedReward, setSelectedReward] = useState<RewardView | null>(null);
   const [supabaseInventory, setSupabaseInventory] = useState<InventoryRow[]>([]);
   const [supabaseBoxes, setSupabaseBoxes] = useState<MysteryBoxWithDetails[]>([]);
+  const [voucherRedemptions, setVoucherRedemptions] = useState<VoucherRedemptionRow[]>([]);
   const [loadingRemote, setLoadingRemote] = useState(false);
   const totalStars = getTotalStars(storeData);
   const ticketProgress = getTicketProgress(storeData);
@@ -63,9 +71,11 @@ export const InventoryScreen: React.FC<InventoryScreenProps> = ({
     Promise.all([
       fetchUserInventory(userId),
       fetchUserMysteryBoxes(userId),
-    ]).then(([inv, boxes]) => {
+      fetchUserVoucherRedemptions(userId),
+    ]).then(([inv, boxes, vouchers]) => {
       setSupabaseInventory(inv);
       setSupabaseBoxes(boxes);
+      setVoucherRedemptions(vouchers);
     }).finally(() => setLoadingRemote(false));
   }, [userId]);
 
@@ -86,7 +96,7 @@ export const InventoryScreen: React.FC<InventoryScreenProps> = ({
   ];
 
   // Convert Supabase mystery boxes to local MysteryBoxReward format for display
-  const mergedRewards: MysteryBoxReward[] = [
+  const mergedRewards: RewardView[] = [
     ...storeData.mysteryBoxRewards,
     ...supabaseBoxes
       .filter(sb => sb.status === 'opened')
@@ -102,6 +112,19 @@ export const InventoryScreen: React.FC<InventoryScreenProps> = ({
         claimedAt: sb.opened_at ? new Date(sb.opened_at).getTime() : Date.now(),
       })),
   ];
+
+  const latestVoucher = voucherRedemptions[0];
+  const rewardsWithVoucherMeta: RewardView[] = mergedRewards.map((r) => {
+    if (!latestVoucher) return r;
+    if (r.type !== 'spin_ticket' && r.type !== 'inventory_item') return r;
+    return {
+      ...r,
+      waStatus: latestVoucher.status,
+      waMessage: latestVoucher.message,
+      waVoucherCode: latestVoucher.voucher_code,
+      waCreatedAt: latestVoucher.created_at,
+    };
+  });
 
   const tabIcons: Record<TabId, string> = {
     overview: coinImg, items: shieldImg, rewards: chestOpen, tickets: chestClosed,
@@ -173,7 +196,7 @@ export const InventoryScreen: React.FC<InventoryScreenProps> = ({
       <div className="relative z-10 flex-1 overflow-y-auto px-3 pb-4">
         {activeTab === 'overview' && <OverviewTab storeData={storeData} totalStars={totalStars} ticketProgress={ticketProgress} itemCount={mergedInventory.length} />}
         {activeTab === 'items' && <ItemsTab items={mergedInventory} loading={loadingRemote} onSelectItem={(item) => { playClickSound(); setSelectedItem(item); }} />}
-        {activeTab === 'rewards' && <RewardsTab rewards={mergedRewards} loading={loadingRemote} onSelectReward={(r) => { playClickSound(); setSelectedReward(r); }} />}
+        {activeTab === 'rewards' && <RewardsTab rewards={rewardsWithVoucherMeta} loading={loadingRemote} onSelectReward={(r) => { playClickSound(); setSelectedReward(r); }} />}
         {activeTab === 'tickets' && <TicketsTab storeData={storeData} ticketProgress={ticketProgress} />}
       </div>
 
@@ -352,7 +375,7 @@ const ItemDetailModal: React.FC<{
 /* ═══════════════════════════════════════════════════════════════════════════ */
 
 const RewardDetailModal: React.FC<{
-  reward: MysteryBoxReward; onClose: () => void;
+  reward: RewardView; onClose: () => void;
 }> = ({ reward, onClose }) => {
   const isBirthdayCard = reward.type === 'birthday_card';
   const isSpinTicket = reward.type === 'spin_ticket';
@@ -545,6 +568,17 @@ const RewardDetailModal: React.FC<{
             </div>
           )}
 
+          {reward.waStatus && (
+            <div className="mb-3 rounded-lg px-3 py-2"
+              style={{ background: 'rgba(37,211,102,0.08)', border: '1px solid rgba(37,211,102,0.25)' }}
+            >
+              <p className="text-[10px] font-bold text-emerald-300 uppercase tracking-wider mb-0.5">WhatsApp Redemption</p>
+              <p className="text-[10px] text-emerald-200/90">Status: {reward.waStatus}</p>
+              {reward.waVoucherCode && <p className="text-[9px] text-emerald-300/80">Kode: {reward.waVoucherCode}</p>}
+              {reward.waCreatedAt && <p className="text-[8px] text-emerald-400/60">{new Date(reward.waCreatedAt).toLocaleString('id-ID')}</p>}
+            </div>
+          )}
+
           <button onClick={() => { playClickSound(); onClose(); }}
             className="w-full py-2.5 rounded-xl text-xs font-bold transition active:scale-95"
             style={{ background: 'rgba(0,0,0,0.3)', border: `1px solid ${config.borderColor}`, color: '#b4a060' }}
@@ -679,7 +713,7 @@ const REWARD_TYPE_CONFIG: Record<string, { label: string; badgeColor: string; ba
   cosmetic: { label: '✨ Cosmetic', badgeColor: 'text-pink-300', badgeBg: 'bg-pink-500/20', borderColor: 'rgba(244,114,182,0.3)', glowColor: 'rgba(244,114,182,0.1)' },
 };
 
-const RewardsTab: React.FC<{ rewards: MysteryBoxReward[]; loading: boolean; onSelectReward: (r: MysteryBoxReward) => void }> = ({ rewards, loading, onSelectReward }) => {
+const RewardsTab: React.FC<{ rewards: RewardView[]; loading: boolean; onSelectReward: (r: RewardView) => void }> = ({ rewards, loading, onSelectReward }) => {
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center h-64 gap-3">
@@ -693,7 +727,7 @@ const RewardsTab: React.FC<{ rewards: MysteryBoxReward[]; loading: boolean; onSe
   }
 
   // Group rewards by type
-  const grouped: Record<string, MysteryBoxReward[]> = {};
+  const grouped: Record<string, RewardView[]> = {};
   for (const r of rewards) {
     if (!grouped[r.type]) grouped[r.type] = [];
     grouped[r.type].push(r);
@@ -799,6 +833,12 @@ const RewardsTab: React.FC<{ rewards: MysteryBoxReward[]; loading: boolean; onSe
                     {reward.claimedAt && (
                       <p className="text-[7px] text-amber-700/40 mt-1">
                         {new Date(reward.claimedAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </p>
+                    )}
+
+                    {reward.waStatus && (
+                      <p className="text-[8px] text-emerald-400/70 mt-0.5 font-bold">
+                        WhatsApp: {reward.waStatus}
                       </p>
                     )}
                   </div>

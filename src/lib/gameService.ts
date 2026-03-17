@@ -9,6 +9,7 @@
  */
 import { supabase } from './supabase';
 import type { MysteryBox } from './database.types';
+import type { VoucherRedemption } from './database.types';
 import type {
   GameStoreData,
   PlayerProfile,
@@ -408,6 +409,100 @@ export interface SpinWheelPrizeRow {
   value: number;
   weight: number;
   sort_order: number;
+}
+
+export interface VoucherRedemptionRow {
+  id: string;
+  user_id: string;
+  source_type: string;
+  status: 'pending' | 'sent' | 'redeemed' | 'cancelled';
+  voucher_code: string | null;
+  prizes_text: string;
+  message: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function createVoucherRedemption(input: {
+  userId: string;
+  sourceType?: string;
+  status?: 'pending' | 'sent' | 'redeemed' | 'cancelled';
+  voucherCode?: string | null;
+  prizesText: string;
+  message: string;
+  metadata?: Record<string, unknown>;
+}): Promise<VoucherRedemptionRow | null> {
+  try {
+    const { data, error } = await supabase
+      .from('voucher_redemptions')
+      .insert({
+        user_id: input.userId,
+        source_type: input.sourceType || 'spin_wheel',
+        status: input.status || 'pending',
+        voucher_code: input.voucherCode || null,
+        prizes_text: input.prizesText,
+        message: input.message,
+        metadata: input.metadata || {},
+      } as never)
+      .select('*')
+      .single();
+
+    if (error) {
+      console.error('Create voucher redemption error:', error);
+      return null;
+    }
+
+    return data as VoucherRedemptionRow;
+  } catch (err) {
+    console.error('Create voucher redemption error:', err);
+    return null;
+  }
+}
+
+export async function updateVoucherRedemptionStatus(
+  redemptionId: string,
+  status: 'pending' | 'sent' | 'redeemed' | 'cancelled',
+): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('voucher_redemptions')
+      .update({
+        status,
+        updated_at: new Date().toISOString(),
+      } as never)
+      .eq('id', redemptionId);
+
+    if (error) {
+      console.error('Update voucher redemption status error:', error);
+      return false;
+    }
+
+    return true;
+  } catch (err) {
+    console.error('Update voucher redemption status error:', err);
+    return false;
+  }
+}
+
+export async function fetchUserVoucherRedemptions(userId: string): Promise<VoucherRedemptionRow[]> {
+  try {
+    const { data, error } = await supabase
+      .from('voucher_redemptions')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Fetch voucher redemptions error:', error);
+      return [];
+    }
+
+    return (data as VoucherRedemption[]) || [];
+  } catch (err) {
+    console.error('Fetch voucher redemptions error:', err);
+    return [];
+  }
 }
 
 /** Fetch active spin wheel prizes from Supabase */
