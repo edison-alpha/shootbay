@@ -384,7 +384,7 @@ export const MysteryBoxScreen: React.FC<MysteryBoxScreenProps> = ({
       </div>
 
       {/* ── Content ── */}
-      <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-4 overflow-y-auto">
+      <div className="relative z-10 flex-1 min-h-0 flex flex-col items-center justify-start px-4 pt-1 pb-4 overflow-y-auto">
         {phase === 'input' && (
           <InputPhase
             code={code}
@@ -670,7 +670,10 @@ const RevealedPhase: React.FC<{
   };
 
   return (
-    <div className={`flex flex-col items-center w-full max-w-sm transition-all duration-700 ${showReward ? 'opacity-100 scale-100' : 'opacity-0 scale-75'}`}>
+    <div
+      className={`flex flex-col items-center w-full max-w-sm max-h-full overflow-y-auto overscroll-contain px-0.5 pb-6 transition-all duration-700 ${showReward ? 'opacity-100 scale-100' : 'opacity-0 scale-75'}`}
+      style={{ WebkitOverflowScrolling: 'touch' }}
+    >
       {/* ── Birthday Card Section ── */}
       {isBirthdayReveal && (
         <div className="w-full rounded-2xl p-5 mb-4 relative overflow-hidden"

@@ -7,7 +7,10 @@ const APP_ASSETS = [
 ];
 
 const STATIC_EXTENSIONS = [
-  '.js', '.css', '.png', '.jpg', '.jpeg', '.webp', '.svg', '.ico', '.woff', '.woff2', '.ttf'
+  // Keep runtime cache lean for PWA performance.
+  // Large game images are loaded from network (and browser HTTP cache),
+  // not persisted in Service Worker Cache Storage.
+  '.js', '.css', '.svg', '.ico', '.woff', '.woff2', '.ttf'
 ];
 
 function isCacheableStaticRequest(requestUrl) {
