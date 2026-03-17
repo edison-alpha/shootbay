@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { adminLogin, logout } from '../../lib/auth';
+import { loginWithGoogle, logout } from '../../lib/auth';
 import type { AuthUser } from '../../lib/auth';
 import { supabase } from '../../lib/supabase';
 import {
@@ -42,8 +42,6 @@ interface AdminDashboardProps {
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   const [adminUser, setAdminUser] = useState<AuthUser | null>(null);
-  const [loginEmail, setLoginEmail] = useState('');
-  const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
   const [loginLoading, setLoginLoading] = useState(false);
   const [sessionChecked, setSessionChecked] = useState(false);
@@ -80,6 +78,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
               avatarUrl: p.avatar_url,
               characterId: p.character_id,
             });
+          } else if (profile) {
+            // User is logged in but NOT admin
+            setLoginError('Access denied. Your account does not have admin privileges.');
           }
         }
       } catch {
@@ -87,19 +88,56 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
       }
       setSessionChecked(true);
     })();
+
+    // Listen for auth state changes (e.g., after Google OAuth redirect)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' && session?.user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .maybeSingle();
+
+        if (profile && (profile as { role: string }).role === 'admin') {
+          const p = profile as {
+            id: string;
+            username: string;
+            game_user_id: string;
+            display_name: string;
+            role: string;
+            avatar_url: string | null;
+            character_id: string;
+          };
+          setAdminUser({
+            id: p.id,
+            email: session.user.email || '',
+            username: p.username,
+            gameUserId: p.game_user_id,
+            displayName: p.display_name,
+            role: 'admin',
+            avatarUrl: p.avatar_url,
+            characterId: p.character_id,
+          });
+          setLoginError('');
+        } else {
+          setLoginError('Access denied. Your Google account does not have admin privileges.');
+          setLoginLoading(false);
+        }
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
-  const handleAdminLogin = async () => {
+  const handleGoogleAdminLogin = async () => {
     setLoginError('');
     setLoginLoading(true);
-    const result = await adminLogin(loginEmail, loginPassword);
-    setLoginLoading(false);
-
+    const result = await loginWithGoogle();
     if (!result.success) {
-      setLoginError(result.error || 'Login failed');
-      return;
+      setLoginLoading(false);
+      setLoginError(result.error || 'Google login failed');
     }
-    setAdminUser(result.user || null);
+    // If successful, page redirects to Google — auth state change handler will verify admin role
   };
 
   const handleLogout = async () => {
@@ -120,13 +158,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   if (!adminUser) {
     return (
       <AdminLoginGate
-        email={loginEmail}
-        password={loginPassword}
         error={loginError}
         loading={loginLoading}
-        onEmailChange={setLoginEmail}
-        onPasswordChange={setLoginPassword}
-        onLogin={handleAdminLogin}
+        onGoogleLogin={handleGoogleAdminLogin}
         onBack={onBack}
       />
     );
@@ -136,51 +170,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// AdminLoginGate — Login screen for admin access
+// AdminLoginGate — Google OAuth login screen for admin access
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const AdminLoginGate: React.FC<{
-  email: string;
-  password: string;
   error: string;
   loading: boolean;
-  onEmailChange: (v: string) => void;
-  onPasswordChange: (v: string) => void;
-  onLogin: () => void;
+  onGoogleLogin: () => void;
   onBack: () => void;
-}> = ({ email, password, error, loading, onEmailChange, onPasswordChange, onLogin, onBack }) => (
+}> = ({ error, loading, onGoogleLogin, onBack }) => (
   <div className="absolute inset-0 z-[200] flex flex-col items-center justify-center bg-gray-950">
     <div className="w-full max-w-sm mx-auto px-6">
       <div className="rounded-2xl p-8 bg-gray-900 border border-gray-800 shadow-2xl">
         <div className="text-center mb-6">
           <div className="text-3xl mb-2">🛡️</div>
           <h1 className="text-xl font-black text-white">Admin Panel</h1>
-          <p className="text-xs text-gray-500 mt-1">Restricted Access</p>
-        </div>
-
-        <div className="mb-4">
-          <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1 block">Admin Email</label>
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => onEmailChange(e.target.value)}
-            placeholder="admin@gmail.com"
-            className="w-full px-4 py-3 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm font-medium outline-none focus:border-blue-500 transition"
-            autoComplete="email"
-          />
-        </div>
-
-        <div className="mb-5">
-          <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1 block">Password</label>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => onPasswordChange(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && onLogin()}
-            placeholder="••••••••"
-            className="w-full px-4 py-3 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm font-medium outline-none focus:border-blue-500 transition"
-            autoComplete="current-password"
-          />
+          <p className="text-xs text-gray-500 mt-1">Sign in with your admin Google account</p>
         </div>
 
         {error && (
@@ -190,16 +195,44 @@ const AdminLoginGate: React.FC<{
         )}
 
         <button
-          onClick={onLogin}
+          onClick={onGoogleLogin}
           disabled={loading}
-          className="w-full py-3 rounded-xl text-sm font-bold uppercase tracking-wider transition active:scale-[0.98] bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full py-3 rounded-xl text-sm font-bold transition active:scale-[0.97] mb-4 flex items-center justify-center gap-3"
+          style={{
+            background: loading ? 'rgba(60,60,60,0.5)' : 'rgba(255,255,255,0.95)',
+            border: '2px solid rgba(200,200,200,0.3)',
+            boxShadow: loading ? 'none' : '0 4px 16px rgba(0,0,0,0.25)',
+            color: loading ? '#999' : '#333',
+          }}
         >
-          {loading ? 'Authenticating...' : 'Login as Admin'}
+          {!loading && (
+            <svg width="20" height="20" viewBox="0 0 48 48">
+              <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+              <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+              <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
+              <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+            </svg>
+          )}
+          {loading ? (
+            <span className="flex items-center gap-2">
+              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              Redirecting to Google...
+            </span>
+          ) : (
+            'Sign in with Google'
+          )}
         </button>
+
+        <p className="text-[10px] text-gray-600 text-center mb-4 leading-relaxed">
+          Only authorized admin Google accounts can access this panel.
+        </p>
 
         <button
           onClick={onBack}
-          className="w-full mt-3 py-2 text-xs text-gray-500 hover:text-gray-300 transition"
+          className="w-full mt-1 py-2 text-xs text-gray-500 hover:text-gray-300 transition"
         >
           ← Back to Game
         </button>

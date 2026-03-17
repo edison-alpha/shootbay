@@ -272,7 +272,15 @@ async function _loginInner(trimmedEmail: string, password: string): Promise<Logi
 // ─── Admin Login ──────────────────────────────────────────────────────────────
 
 export async function adminLogin(email: string, password: string): Promise<LoginResult> {
-  const result = await login(email, password);
+  const trimmedEmail = email.trim().toLowerCase();
+
+  if (!trimmedEmail || !password) {
+    return { success: false, error: 'Email and password are required' };
+  }
+
+  // Admin login does NOT use a timeout — it may involve multiple sequential steps
+  // (login → bootstrap → profile retry → signup) that legitimately take longer.
+  const result = await _loginInner(trimmedEmail, password);
 
   if (result.success) {
     if (result.user?.role === 'admin') {
@@ -294,7 +302,6 @@ export async function adminLogin(email: string, password: string): Promise<Login
     return { success: false, error: 'Access denied. Admin privileges required.' };
   }
 
-  const trimmedEmail = email.trim().toLowerCase();
   if (result.error?.includes('Invalid email or password') || result.error?.includes('Profile not found')) {
     const signupResult = await signupAdmin(trimmedEmail, password);
     if (signupResult.success && signupResult.user) {
