@@ -3,6 +3,7 @@ import type { GameStoreData, MysteryBoxReward } from '../../store/gameStore';
 import { saveGameData } from '../../store/gameStore';
 import { redeemMysteryBoxByCode, fetchUserMysteryBoxes, updateMysteryBoxWishFlow } from '../../lib/gameService';
 import type { MysteryBoxWithDetails } from '../../lib/gameService';
+import { supabase } from '../../lib/supabase';
 import chestClosed from '../../assets/underwater/Neutral/æhest_closed.webp';
 import chestAjar from '../../assets/underwater/Neutral/æhest_ajar.webp';
 import chestOpen from '../../assets/underwater/Neutral/æhest_open.webp';
@@ -164,6 +165,33 @@ export const MysteryBoxScreen: React.FC<MysteryBoxScreenProps> = ({
   useEffect(() => {
     refreshUserBoxes();
   }, [refreshUserBoxes]);
+
+  // Realtime sync for mystery boxes assigned to current user
+  useEffect(() => {
+    if (!userId) return;
+
+    let refreshTimeout: number | null = null;
+    const scheduleRefresh = () => {
+      if (refreshTimeout) clearTimeout(refreshTimeout);
+      refreshTimeout = window.setTimeout(() => {
+        refreshUserBoxes().catch(console.error);
+      }, 180);
+    };
+
+    const channel = supabase
+      .channel(`mystery-box-user:${userId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'mystery_boxes', filter: `assigned_to=eq.${userId}` },
+        scheduleRefresh,
+      )
+      .subscribe();
+
+    return () => {
+      if (refreshTimeout) clearTimeout(refreshTimeout);
+      supabase.removeChannel(channel);
+    };
+  }, [userId, refreshUserBoxes]);
 
   // Check if user has any pending spin tickets in rewards
   const spinTicketCount = storeData.mysteryBoxRewards

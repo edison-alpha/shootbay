@@ -15,6 +15,7 @@ import { createInitialGameSnapshot, resetGameSnapshot } from './engine/entities'
 
 // ─── Store ──────────────────────────────────────────────────────────────────
 import {
+  createDefaultGameData,
   loadGameData,
   saveProfile,
   saveLevelProgress,
@@ -26,6 +27,7 @@ import {
   saveSessionState,
   loadSessionState,
   clearSessionState,
+  setActiveStorageUser,
 } from './store/gameStore';
 import type { GameStoreData } from './store/gameStore';
 
@@ -67,6 +69,7 @@ import {
 import { SignupScreen } from './components/screens/SignupScreen';
 import { LoginScreen } from './components/screens/LoginScreen';
 import { AdminDashboard } from './components/screens/AdminDashboard';
+import { supabase } from './lib/supabase';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 import { playSoundEffect } from './utils/audio';
@@ -138,6 +141,8 @@ export default function App() {
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [musicEnabled, setMusicEnabled] = useState(true);
 
+  const realtimeSyncTimeoutRef = useRef<number | null>(null);
+
   // ── Refs ─────────────────────────────────────────────────────────────
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const gameRef = useRef(createInitialGameSnapshot());
@@ -150,6 +155,14 @@ export default function App() {
   // ── Hooks ────────────────────────────────────────────────────────────
   const camera = useCamera(gameState);
   const audio = useAudioManager(gameRef);
+
+  const resetForFreshOnboarding = useCallback(() => {
+    const empty = createDefaultGameData();
+    setStoreData(empty);
+    setSelectedCharacterId('agree');
+    camera.setProfilePhoto(null);
+    camera.setCameraError('');
+  }, [camera]);
 
   // ── Auth session check on mount ──────────────────────────────────
   useEffect(() => {
@@ -164,6 +177,10 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    setActiveStorageUser(authUser?.id ?? null);
+  }, [authUser]);
+
+  useEffect(() => {
     if (!authChecked || !introReady || gameState !== 'intro') return;
 
     if (authUser) {
@@ -175,17 +192,28 @@ export default function App() {
         return;
       }
 
-      // Try loading from Supabase first, fall back to localStorage
+      // Try loading from Supabase first
+      const cachedData = loadGameData();
+      if (cachedData.profile) {
+        setPlayerName(cachedData.profile.name);
+        setSelectedCharacterId((cachedData.profile.characterId || 'agree') as CharacterId);
+        camera.setProfilePhoto(cachedData.profile.profilePhoto || null);
+        setStoreData(cachedData);
+
+        const savedState = loadSessionState();
+        const resumeState = (savedState ?? 'mainMenu') as GameState;
+        setGameState(resumeState);
+        gameRef.current.state = resumeState;
+      }
+
       loadGameDataFromSupabase(authUser.id)
         .then((supaData) => {
-          const data = supaData ?? loadGameData();
+          const data = supaData;
 
           if (data.profile) {
             setPlayerName(data.profile.name);
-            setSelectedCharacterId(data.profile.characterId as CharacterId);
-            if (data.profile.profilePhoto) {
-              camera.setProfilePhoto(data.profile.profilePhoto);
-            }
+            setSelectedCharacterId((data.profile.characterId || 'agree') as CharacterId);
+            camera.setProfilePhoto(data.profile.profilePhoto || null);
             setStoreData(data);
 
             // Restore last resumable state or default to mainMenu
@@ -195,38 +223,25 @@ export default function App() {
             setGameState(resumeState);
             gameRef.current.state = resumeState;
           } else {
+            resetForFreshOnboarding();
             setPlayerName(authUser.displayName || authUser.username);
             setGameState('nameEntry');
             gameRef.current.state = 'nameEntry';
           }
         })
         .catch(() => {
-          // Fallback to localStorage on error
-          const data = loadGameData();
-          if (data.profile) {
-            setPlayerName(data.profile.name);
-            setSelectedCharacterId(data.profile.characterId as CharacterId);
-            if (data.profile.profilePhoto) {
-              camera.setProfilePhoto(data.profile.profilePhoto);
-            }
-            setStoreData(data);
-
-            const savedState = loadSessionState();
-            const resumeState = (savedState ?? 'mainMenu') as GameState;
-            setGameState(resumeState);
-            gameRef.current.state = resumeState;
-          } else {
-            setPlayerName(authUser.displayName || authUser.username);
-            setGameState('nameEntry');
-            gameRef.current.state = 'nameEntry';
-          }
+          resetForFreshOnboarding();
+          setPlayerName(authUser.displayName || authUser.username);
+          setGameState('nameEntry');
+          gameRef.current.state = 'nameEntry';
         });
       return;
     }
 
+    setActiveStorageUser(null);
     setGameState('login');
     gameRef.current.state = 'login';
-  }, [authChecked, authUser, gameState, introReady]);
+  }, [authChecked, authUser, gameState, introReady, resetForFreshOnboarding]);
 
   const { loadingProgress, introFading } = useIntroLoader(gameState, gameRef, () => {
     setIntroReady(true);
@@ -606,48 +621,50 @@ export default function App() {
   // ── Auth handlers ──────────────────────────────────────────────────
   const handleLoginSuccess = (user: AuthUser) => {
     setAuthUser(user);
+    setActiveStorageUser(user.id);
 
-    // Load data from Supabase first, fall back to localStorage
+    // Fast path: show user-scoped cached data instantly (if available)
+    const cachedData = loadGameData();
+    if (cachedData.profile) {
+      setPlayerName(cachedData.profile.name);
+      setSelectedCharacterId((cachedData.profile.characterId || 'agree') as CharacterId);
+      camera.setProfilePhoto(cachedData.profile.profilePhoto || null);
+      setStoreData(cachedData);
+      setGameState('mainMenu');
+      gameRef.current.state = 'mainMenu';
+    }
+
+    // Load data from Supabase first
     loadGameDataFromSupabase(user.id)
       .then((supaData) => {
-        const data = supaData ?? loadGameData();
+        const data = supaData;
         if (data.profile) {
           setPlayerName(data.profile.name);
-          setSelectedCharacterId(data.profile.characterId as CharacterId);
-          if (data.profile.profilePhoto) {
-            camera.setProfilePhoto(data.profile.profilePhoto);
-          }
+          setSelectedCharacterId((data.profile.characterId || 'agree') as CharacterId);
+          camera.setProfilePhoto(data.profile.profilePhoto || null);
           setStoreData(data);
           setGameState('mainMenu');
           gameRef.current.state = 'mainMenu';
         } else {
+          resetForFreshOnboarding();
           setPlayerName(user.displayName || user.username);
           setGameState('nameEntry');
           gameRef.current.state = 'nameEntry';
         }
       })
       .catch(() => {
-        const data = loadGameData();
-        if (data.profile) {
-          setPlayerName(data.profile.name);
-          setSelectedCharacterId(data.profile.characterId as CharacterId);
-          if (data.profile.profilePhoto) {
-            camera.setProfilePhoto(data.profile.profilePhoto);
-          }
-          setStoreData(data);
-          setGameState('mainMenu');
-          gameRef.current.state = 'mainMenu';
-        } else {
-          setPlayerName(user.displayName || user.username);
-          setGameState('nameEntry');
-          gameRef.current.state = 'nameEntry';
-        }
+        resetForFreshOnboarding();
+        setPlayerName(user.displayName || user.username);
+        setGameState('nameEntry');
+        gameRef.current.state = 'nameEntry';
       });
   };
 
   // Signup always goes through onboarding: nameEntry → photoCapture → tutorial → mainMenu
   const handleSignupSuccess = (user: AuthUser) => {
     setAuthUser(user);
+    setActiveStorageUser(user.id);
+    resetForFreshOnboarding();
     setPlayerName(user.displayName || user.username);
     setGameState('nameEntry');
     gameRef.current.state = 'nameEntry';
@@ -672,7 +689,10 @@ export default function App() {
   const handleLogout = async () => {
     await logout();
     clearSessionState();
+    setActiveStorageUser(null);
     setAuthUser(null);
+    resetForFreshOnboarding();
+    setPlayerName('');
     setGameState('login');
     gameRef.current.state = 'login';
   };
@@ -683,10 +703,77 @@ export default function App() {
 
     const syncTimeout = setTimeout(() => {
       saveFullGameDataToSupabase(authUser.id, storeData).catch(console.error);
-    }, 2000);
+    }, 400);
 
     return () => clearTimeout(syncTimeout);
   }, [authUser, storeData]);
+
+  // ── Realtime user data sync (profile, stats, boxes, inventory, vouchers) ──
+  useEffect(() => {
+    if (!authUser) return;
+
+    const scheduleReload = () => {
+      if (realtimeSyncTimeoutRef.current) {
+        clearTimeout(realtimeSyncTimeoutRef.current);
+      }
+
+      realtimeSyncTimeoutRef.current = window.setTimeout(() => {
+        loadGameDataFromSupabase(authUser.id)
+          .then((fresh) => {
+            if (!fresh?.profile) return;
+            setStoreData(fresh);
+            setPlayerName(fresh.profile.name);
+            setSelectedCharacterId((fresh.profile.characterId || 'agree') as CharacterId);
+            camera.setProfilePhoto(fresh.profile.profilePhoto || null);
+          })
+          .catch(() => {
+            // Keep current in-memory state on transient failures
+          });
+      }, 250);
+    };
+
+    const channel = supabase
+      .channel(`user-realtime:${authUser.id}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'profiles',
+        filter: `id=eq.${authUser.id}`,
+      }, scheduleReload)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'level_progress',
+        filter: `user_id=eq.${authUser.id}`,
+      }, scheduleReload)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'inventory',
+        filter: `user_id=eq.${authUser.id}`,
+      }, scheduleReload)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'mystery_boxes',
+        filter: `assigned_to=eq.${authUser.id}`,
+      }, scheduleReload)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'voucher_redemptions',
+        filter: `user_id=eq.${authUser.id}`,
+      }, scheduleReload)
+      .subscribe();
+
+    return () => {
+      if (realtimeSyncTimeoutRef.current) {
+        clearTimeout(realtimeSyncTimeoutRef.current);
+        realtimeSyncTimeoutRef.current = null;
+      }
+      supabase.removeChannel(channel);
+    };
+  }, [authUser, camera]);
 
   // ── Render ───────────────────────────────────────────────────────────
   return (

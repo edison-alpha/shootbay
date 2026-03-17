@@ -127,9 +127,27 @@ export interface GameStoreData {
   };
 }
 
-const STORAGE_KEY = 'dimsum_dash_save';
-const SESSION_STATE_KEY = 'dimsum_dash_session';
+const STORAGE_KEY_BASE = 'dimsum_dash_save';
+const SESSION_STATE_KEY_BASE = 'dimsum_dash_session';
 const DIMSUM_PER_TICKET = 6;
+
+let activeStorageUserId: string | null = null;
+
+function getStorageKey(): string {
+  return activeStorageUserId ? `${STORAGE_KEY_BASE}:${activeStorageUserId}` : STORAGE_KEY_BASE;
+}
+
+function getSessionStateKey(): string {
+  return activeStorageUserId ? `${SESSION_STATE_KEY_BASE}:${activeStorageUserId}` : SESSION_STATE_KEY_BASE;
+}
+
+/**
+ * Scope localStorage persistence to the currently authenticated user.
+ * Prevents cross-account data leakage when multiple users sign in from the same browser.
+ */
+export function setActiveStorageUser(userId: string | null): void {
+  activeStorageUserId = userId;
+}
 
 // ─── Session State Persistence ───────────────────────────────────────────────
 
@@ -149,7 +167,7 @@ const RESUMABLE_STATES = new Set([
 export function saveSessionState(state: string): void {
   try {
     if (RESUMABLE_STATES.has(state)) {
-      localStorage.setItem(SESSION_STATE_KEY, state);
+      localStorage.setItem(getSessionStateKey(), state);
     }
   } catch {
     // Storage unavailable
@@ -159,7 +177,7 @@ export function saveSessionState(state: string): void {
 /** Load the last saved game state. Returns null if none or not resumable. */
 export function loadSessionState(): string | null {
   try {
-    const state = localStorage.getItem(SESSION_STATE_KEY);
+    const state = localStorage.getItem(getSessionStateKey());
     if (state && RESUMABLE_STATES.has(state)) return state;
     return null;
   } catch {
@@ -170,7 +188,7 @@ export function loadSessionState(): string | null {
 /** Clear the saved session state (e.g. on logout) */
 export function clearSessionState(): void {
   try {
-    localStorage.removeItem(SESSION_STATE_KEY);
+    localStorage.removeItem(getSessionStateKey());
   } catch {
     // ignore
   }
@@ -198,11 +216,16 @@ function getDefaultData(): GameStoreData {
   };
 }
 
+/** Create a fresh in-memory default game data object for the active user scope. */
+export function createDefaultGameData(): GameStoreData {
+  return getDefaultData();
+}
+
 // ─── Load / Save ─────────────────────────────────────────────────────────────
 
 export function loadGameData(): GameStoreData {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(getStorageKey());
     if (!raw) return getDefaultData();
     const parsed = JSON.parse(raw) as Partial<GameStoreData>;
     return { ...getDefaultData(), ...parsed };
@@ -213,7 +236,7 @@ export function loadGameData(): GameStoreData {
 
 export function saveGameData(data: GameStoreData): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    localStorage.setItem(getStorageKey(), JSON.stringify(data));
   } catch {
     // Storage full or unavailable
   }

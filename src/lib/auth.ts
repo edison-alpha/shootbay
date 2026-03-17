@@ -207,7 +207,7 @@ export async function login(email: string, password: string): Promise<LoginResul
       return { success: false, error: 'Login failed. Please try again.' };
     }
 
-    const profile = await fetchProfileWithRetry(authData.user.id);
+    const profile = await fetchProfileFastThenRetry(authData.user.id);
 
     if (!profile) {
       const username = sanitizeUsername(authData.user.user_metadata?.username) || trimmedEmail.split('@')[0];
@@ -289,7 +289,12 @@ export async function logout(): Promise<void> {
 
 export async function getCurrentUser(): Promise<AuthUser | null> {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    const sessionUser = session?.user;
+    const user = sessionUser || (await supabase.auth.getUser()).data.user;
     if (!user) return null;
 
     const { data: profile } = await supabase
@@ -432,6 +437,19 @@ async function fetchProfileWithRetry(userId: string, attempts = 5, delayMs = 400
   }
 
   return null;
+}
+
+async function fetchProfileFastThenRetry(userId: string): Promise<Profile | null> {
+  const { data } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', userId)
+    .maybeSingle();
+
+  if (data) return data;
+
+  // Retry only if first read misses (e.g. profile trigger still propagating)
+  return fetchProfileWithRetry(userId, 3, 220);
 }
 
 async function ensureProfileForAuthenticatedUser(

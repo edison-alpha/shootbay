@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { adminLogin, logout } from '../../lib/auth';
 import type { AuthUser } from '../../lib/auth';
 import { supabase } from '../../lib/supabase';
@@ -219,6 +219,7 @@ const AdminPanel: React.FC<{ admin: AuthUser; onLogout: () => void }> = ({ admin
   const [players, setPlayers] = useState<Profile[]>([]);
   const [spinPrizes, setSpinPrizes] = useState<SpinWheelPrize[]>([]);
   const [loading, setLoading] = useState(true);
+  const refreshTimeoutRef = useRef<number | null>(null);
 
   const refreshData = useCallback(async () => {
     setLoading(true);
@@ -244,26 +245,33 @@ const AdminPanel: React.FC<{ admin: AuthUser; onLogout: () => void }> = ({ admin
   }, [refreshData]);
 
   useEffect(() => {
+    const scheduleRefresh = () => {
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current);
+      }
+
+      refreshTimeoutRef.current = window.setTimeout(() => {
+        refreshData().catch(console.error);
+      }, 250);
+    };
+
     const channel = supabase
       .channel('admin-dashboard-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'mystery_boxes' }, () => {
-        refreshData().catch(console.error);
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'prizes' }, () => {
-        refreshData().catch(console.error);
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'greeting_cards' }, () => {
-        refreshData().catch(console.error);
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
-        refreshData().catch(console.error);
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'spin_wheel_prizes' }, () => {
-        refreshData().catch(console.error);
-      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'mystery_boxes' }, scheduleRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'prizes' }, scheduleRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'greeting_cards' }, scheduleRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, scheduleRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'spin_wheel_prizes' }, scheduleRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'level_progress' }, scheduleRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory' }, scheduleRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'voucher_redemptions' }, scheduleRefresh)
       .subscribe();
 
     return () => {
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current);
+        refreshTimeoutRef.current = null;
+      }
       supabase.removeChannel(channel);
     };
   }, [refreshData]);

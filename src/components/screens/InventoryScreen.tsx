@@ -15,6 +15,7 @@ import pearlImg from '../../assets/underwater/Bonus/Pearl.webp';
 import heartImg from '../../assets/underwater/Bonus/Heart.webp';
 import swordIcon from '../../assets/water-fire-sprite-magic/Icons/PNG/Icons_Fire Arrow.webp';
 import arenaBg from '../../assets/arena_background.webp';
+import { supabase } from '../../lib/supabase';
 
 // Spin prize images
 import shoesImg from '../../assets/shoes.png';
@@ -77,6 +78,56 @@ export const InventoryScreen: React.FC<InventoryScreenProps> = ({
       setSupabaseBoxes(boxes);
       setVoucherRedemptions(vouchers);
     }).finally(() => setLoadingRemote(false));
+  }, [userId]);
+
+  // Realtime sync for inventory/rewards/voucher updates
+  useEffect(() => {
+    if (!userId) return;
+
+    let refreshTimeout: number | null = null;
+    const refreshRemoteData = () => {
+      if (refreshTimeout) clearTimeout(refreshTimeout);
+      refreshTimeout = window.setTimeout(() => {
+        Promise.all([
+          fetchUserInventory(userId),
+          fetchUserMysteryBoxes(userId),
+          fetchUserVoucherRedemptions(userId),
+        ]).then(([inv, boxes, vouchers]) => {
+          setSupabaseInventory(inv);
+          setSupabaseBoxes(boxes);
+          setVoucherRedemptions(vouchers);
+        }).catch(() => {
+          // Keep current data on transient realtime errors
+        });
+      }, 180);
+    };
+
+    const channel = supabase
+      .channel(`inventory-user:${userId}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'inventory',
+        filter: `user_id=eq.${userId}`,
+      }, refreshRemoteData)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'mystery_boxes',
+        filter: `assigned_to=eq.${userId}`,
+      }, refreshRemoteData)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'voucher_redemptions',
+        filter: `user_id=eq.${userId}`,
+      }, refreshRemoteData)
+      .subscribe();
+
+    return () => {
+      if (refreshTimeout) clearTimeout(refreshTimeout);
+      supabase.removeChannel(channel);
+    };
   }, [userId]);
 
   // Merge local inventory with Supabase inventory
