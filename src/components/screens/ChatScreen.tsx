@@ -115,7 +115,7 @@ export function ChatScreen({ onBack }: ChatScreenProps) {
       {/* Back Button - Top Left */}
       <button
         onClick={onBack}
-        className="absolute top-4 left-4 z-10 text-amber-200 hover:text-amber-100 rounded-lg p-2 transition-all active:scale-90"
+        className="absolute top-16 left-4 z-10 text-amber-200 hover:text-amber-100 rounded-lg p-2 transition-all active:scale-90"
         style={{
           background: 'rgba(0,0,0,0.4)',
           border: '1px solid rgba(180,140,60,0.3)',
