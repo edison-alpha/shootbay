@@ -222,9 +222,13 @@ const AdminPanel: React.FC<{ admin: AuthUser; onLogout: () => void }> = ({ admin
   const [spinPrizes, setSpinPrizes] = useState<SpinWheelPrize[]>([]);
   const [loading, setLoading] = useState(true);
   const refreshTimeoutRef = useRef<number | null>(null);
+  const firstLoadRef = useRef(true);
 
-  const refreshData = useCallback(async () => {
-    setLoading(true);
+  const refreshData = useCallback(async (options?: { silent?: boolean }) => {
+    const silent = options?.silent ?? false;
+    if (!silent && firstLoadRef.current) {
+      setLoading(true);
+    }
     const [s, p, c, b, pl, sp] = await Promise.all([
       getDashboardStats(),
       getAllPrizes(),
@@ -239,11 +243,14 @@ const AdminPanel: React.FC<{ admin: AuthUser; onLogout: () => void }> = ({ admin
     setBoxes(b);
     setPlayers(pl);
     setSpinPrizes(sp);
-    setLoading(false);
+    if (firstLoadRef.current) {
+      setLoading(false);
+      firstLoadRef.current = false;
+    }
   }, []);
 
   useEffect(() => {
-    refreshData();
+    refreshData({ silent: false });
   }, [refreshData]);
 
   useEffect(() => {
@@ -253,19 +260,19 @@ const AdminPanel: React.FC<{ admin: AuthUser; onLogout: () => void }> = ({ admin
       }
 
       refreshTimeoutRef.current = window.setTimeout(() => {
-        refreshData().catch(console.error);
+        refreshData({ silent: true }).catch(console.error);
       }, 250);
     };
 
     // Fallback polling so admin data still refreshes when realtime events are delayed/missed.
     const POLL_INTERVAL_MS = 10000;
     const pollInterval = window.setInterval(() => {
-      refreshData().catch(console.error);
+      refreshData({ silent: true }).catch(console.error);
     }, POLL_INTERVAL_MS);
 
     const handleVisibilityOrFocus = () => {
       if (document.visibilityState === 'visible') {
-        refreshData().catch(console.error);
+        refreshData({ silent: true }).catch(console.error);
       }
     };
 
