@@ -79,21 +79,6 @@ import { playClickSound } from './utils/uiAudio';
 // App — thin orchestrator; all heavy lifting lives in hooks / engine
 // ═══════════════════════════════════════════════════════════════════════════
 export default function App() {
-  // ── Fullscreen API for mobile PWA ─────────────────────────────────
-  useEffect(() => {
-    const requestFullscreen = () => {
-      try {
-        const el = document.documentElement;
-        if (document.fullscreenElement) return;
-        el.requestFullscreen?.()?.catch?.(() => {});
-      } catch {
-        // Silently ignore — fullscreen may not be available or user gesture required
-      }
-    };
-    document.addEventListener('pointerdown', requestFullscreen, { once: true });
-    return () => document.removeEventListener('pointerdown', requestFullscreen);
-  }, []);
-
   // ── Global click sound for all buttons/links ───────────────────────
   useEffect(() => {
     const handler = (e: Event) => {
