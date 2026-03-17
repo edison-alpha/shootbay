@@ -18,12 +18,14 @@ interface MainMenuScreenProps {
   playerName: string;
   profilePhoto: string | null;
   characterImage?: string;
+  isAdmin?: boolean;
   onPlay: () => void;
   onLeaderboard: () => void;
   onInventory: () => void;
   onMysteryBox: () => void;
   onSettings: () => void;
   onChangeCharacter: () => void;
+  onAdmin?: () => void;
 }
 
 export const MainMenuScreen: React.FC<MainMenuScreenProps> = ({
@@ -31,12 +33,14 @@ export const MainMenuScreen: React.FC<MainMenuScreenProps> = ({
   playerName,
   profilePhoto,
   characterImage,
+  isAdmin,
   onPlay,
   onLeaderboard,
   onInventory,
   onMysteryBox,
   onSettings,
   onChangeCharacter,
+  onAdmin,
 }) => {
   const totalStars = getTotalStars(storeData);
   const maxStars = getMaxStars();
@@ -87,6 +91,20 @@ export const MainMenuScreen: React.FC<MainMenuScreenProps> = ({
           <ResourceBadge icon={coinImg} value={totalStars} color="#fbbf24" label="★" />
           <ResourceBadge icon={chestClosed} value={storeData.tickets} color="#c084fc" />
         </div>
+
+        {/* Admin gear (for admin users) */}
+        {isAdmin && onAdmin && (
+          <button onClick={onAdmin} className="w-8 h-8 rounded-lg flex items-center justify-center transition active:scale-90"
+            style={{
+              background: 'linear-gradient(180deg, rgba(30,60,120,0.9) 0%, rgba(20,40,80,0.95) 100%)',
+              border: '1px solid rgba(96,165,250,0.5)',
+              boxShadow: '0 0 8px rgba(96,165,250,0.3)',
+            }}
+            title="Admin Panel"
+          >
+            <span className="text-blue-300 font-black text-xs">⚙</span>
+          </button>
+        )}
 
         {/* Settings gear */}
         <button onClick={onSettings} className="w-8 h-8 rounded-lg flex items-center justify-center transition active:scale-90"

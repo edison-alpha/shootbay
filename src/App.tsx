@@ -875,6 +875,7 @@ export default function App() {
           playerName={playerName}
           profilePhoto={camera.profilePhoto}
           characterImage={selectedCharacter.image}
+          isAdmin={authUser?.role === 'admin'}
           onPlay={() => {
             hapticMedium();
             setGameState('levelSelect');
@@ -899,6 +900,10 @@ export default function App() {
           onChangeCharacter={() => {
             setGameState('characterSelect');
             gameRef.current.state = 'characterSelect';
+          }}
+          onAdmin={() => {
+            setGameState('adminDashboard' as GameState);
+            gameRef.current.state = 'adminDashboard';
           }}
         />
       </ScreenTransition>
