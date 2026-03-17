@@ -45,7 +45,7 @@ export async function signup(
   const trimmedUsername = username.trim().toLowerCase();
   const trimmedEmail = email.trim().toLowerCase();
 
-  // Validate username
+  // Quick local validations (no network)
   if (trimmedUsername.length < 3) {
     return { success: false, error: 'Username must be at least 3 characters' };
   }
@@ -72,6 +72,25 @@ export async function signup(
     return { success: false, error: 'Password must be at least 6 characters' };
   }
 
+  // Timeout guard: signup has multiple network calls, cap at 15s
+  const SIGNUP_TIMEOUT = 15_000;
+  return Promise.race([
+    _signupInner(trimmedUsername, trimmedEmail, password, displayName),
+    new Promise<SignupResult>((resolve) =>
+      setTimeout(() => {
+        console.warn('signup: timed out after', SIGNUP_TIMEOUT, 'ms');
+        resolve({ success: false, error: 'Signup timed out. Please check your connection and try again.' });
+      }, SIGNUP_TIMEOUT),
+    ),
+  ]);
+}
+
+async function _signupInner(
+  trimmedUsername: string,
+  trimmedEmail: string,
+  password: string,
+  displayName?: string,
+): Promise<SignupResult> {
   try {
     // Check if username already exists
     const { data: existingUser, error: checkError } = await supabase
@@ -187,6 +206,20 @@ export async function login(email: string, password: string): Promise<LoginResul
     return { success: false, error: 'Email and password are required' };
   }
 
+  // Timeout guard: if anything hangs for 10s, fail gracefully
+  const LOGIN_TIMEOUT = 10_000;
+  return Promise.race([
+    _loginInner(trimmedEmail, password),
+    new Promise<LoginResult>((resolve) =>
+      setTimeout(() => {
+        console.warn('login: timed out after', LOGIN_TIMEOUT, 'ms');
+        resolve({ success: false, error: 'Login timed out. Please check your connection and try again.' });
+      }, LOGIN_TIMEOUT),
+    ),
+  ]);
+}
+
+async function _loginInner(trimmedEmail: string, password: string): Promise<LoginResult> {
   try {
     const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
       email: trimmedEmail,
@@ -289,23 +322,24 @@ export async function logout(): Promise<void> {
 
 export async function getCurrentUser(): Promise<AuthUser | null> {
   try {
+    // getSession() reads from local storage — instant, no network call.
+    // getUser() would make an HTTP request to validate JWT — unnecessary for
+    // app-start checks since we log in with email/password (session always stored).
     const {
       data: { session },
     } = await supabase.auth.getSession();
 
-    const sessionUser = session?.user;
-    const user = sessionUser || (await supabase.auth.getUser()).data.user;
-    if (!user) return null;
+    if (!session?.user) return null;
 
     const { data: profile } = await supabase
       .from('profiles')
       .select('*')
-      .eq('id', user.id)
+      .eq('id', session.user.id)
       .maybeSingle();
 
     if (!profile) return null;
 
-    return profileToAuthUser(profile, user.email || '');
+    return profileToAuthUser(profile, session.user.email || '');
   } catch {
     return null;
   }

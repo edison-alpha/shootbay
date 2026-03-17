@@ -66,6 +66,7 @@ import {
   loadGameDataFromSupabase,
   saveFullGameDataToSupabase,
 } from './lib/gameService';
+import { clearAllCache } from './lib/queryCache';
 import { SignupScreen } from './components/screens/SignupScreen';
 import { LoginScreen } from './components/screens/LoginScreen';
 import { AdminDashboard } from './components/screens/AdminDashboard';
@@ -624,11 +625,10 @@ export default function App() {
       gameRef.current.state = 'mainMenu';
     }
 
-    // Load data from Supabase first
+    // Load data from Supabase (has 12s timeout to prevent infinite hang)
     loadGameDataFromSupabase(user.id)
-      .then((supaData) => {
-        const data = supaData;
-        if (data.profile) {
+      .then((data) => {
+        if (data && data.profile) {
           setPlayerName(data.profile.name);
           setSelectedCharacterId((data.profile.characterId || 'agree') as CharacterId);
           camera.setProfilePhoto(data.profile.profilePhoto || null);
@@ -678,6 +678,7 @@ export default function App() {
 
   const handleLogout = async () => {
     await logout();
+    clearAllCache(); // Bust all cached queries on logout
     clearSessionState();
     setActiveStorageUser(null);
     setAuthUser(null);
