@@ -22,7 +22,23 @@ import shoesImg from '../../assets/shoes.png';
 import jamImg from '../../assets/jam.png';
 import bajuImg from '../../assets/baju.png';
 
-const WA_REDEEM_URL = 'https://wa.me/6285777131454';
+const WA_ADMIN_PHONE = '6285777131454';
+
+function openWhatsAppToAdmin(message: string) {
+  const encoded = encodeURIComponent(message);
+  const webUrl = `https://api.whatsapp.com/send?phone=${WA_ADMIN_PHONE}&text=${encoded}`;
+  const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
+
+  if (isMobile) {
+    window.location.href = webUrl;
+    return;
+  }
+
+  const popup = window.open(webUrl, '_blank', 'noopener,noreferrer');
+  if (!popup) {
+    window.location.href = webUrl;
+  }
+}
 
 interface InventoryScreenProps {
   storeData: GameStoreData;
@@ -275,12 +291,12 @@ const ItemDetailModal: React.FC<{
   item: InventoryItem; onClose: () => void; onRedeem: (item: InventoryItem) => void;
 }> = ({ item, onClose, onRedeem }) => {
   const [sendingWA, setSendingWA] = useState(false);
-  const [generatedMessage, setGeneratedMessage] = useState('');
   const itemImage = ITEM_IMAGES[item.id] || TYPE_IMAGES[item.type] || shieldImg;
 
   const generateRedeemWAMessage = async () => {
     const prompt = [
-      'Buat pesan WhatsApp berbahasa Indonesia yang profesional, sopan, dan siap kirim ke admin untuk redeem item game.',
+      'Buat pesan WhatsApp berbahasa Indonesia yang profesional, sopan, hangat, dan siap kirim ke admin untuk redeem item game.',
+      'Tambahkan sentuhan lucu ringan yang tetap sopan (maksimal 1 kalimat lucu).',
       'Format: salam pembuka, identitas singkat, detail item, permintaan verifikasi, penutup.',
       `Nama item: ${item.name}`,
       `Item ID: ${item.id}`,
@@ -321,15 +337,17 @@ const ItemDetailModal: React.FC<{
     return [
       'Halo Admin Goblin Bay,',
       '',
-      `Saya ingin redeem item berikut:`,
+      'Perkenalkan, saya ingin melakukan redeem item game berikut:',
       `• Nama item: ${item.name}`,
       `• Item ID: ${item.id}`,
       `• Tipe: ${item.type}`,
       `• Jumlah: ${item.quantity}`,
+      `• Status redeem lokal: ${item.redeemed ? 'sudah redeemed' : 'belum redeemed'}`,
       '',
       'Mohon bantu verifikasi dan langkah penukaran selanjutnya.',
+      'Semoga prosesnya lancar jaya — saya janji tidak spam tombol redeem 😄',
       '',
-      'Terima kasih.',
+      'Terima kasih banyak atas bantuannya.',
     ].join('\n');
   };
 
@@ -338,13 +356,12 @@ const ItemDetailModal: React.FC<{
     setSendingWA(true);
     try {
       const msg = await generateRedeemWAMessage();
-      setGeneratedMessage(msg);
 
       if (!item.redeemed) {
         onRedeem(item);
       }
 
-      window.open(`${WA_REDEEM_URL}?text=${encodeURIComponent(msg)}`, '_blank', 'noopener,noreferrer');
+      openWhatsAppToAdmin(msg);
     } finally {
       setSendingWA(false);
     }
@@ -439,15 +456,8 @@ const ItemDetailModal: React.FC<{
                 boxShadow: '0 4px 16px rgba(37,211,102,0.3)',
               }}
             >
-              {sendingWA ? '🤖 Menyiapkan pesan AI...' : item.redeemed ? '📱 Hubungi Admin di WhatsApp' : '🎁 Redeem via WhatsApp'}
+              {sendingWA ? '⏳ Menyiapkan pesan...' : item.redeemed ? '📱 Hubungi Admin' : '🎁 Redeem ke Admin'}
             </button>
-
-            {generatedMessage && (
-              <div className="rounded-lg p-2" style={{ background: 'rgba(37,211,102,0.08)', border: '1px solid rgba(37,211,102,0.2)' }}>
-                <p className="text-[9px] text-emerald-300/80 font-bold uppercase tracking-wider mb-1">Pesan AI siap kirim</p>
-                <p className="text-[9px] text-emerald-100/80 line-clamp-3">{generatedMessage}</p>
-              </div>
-            )}
           </div>
 
           <button onClick={() => { playClickSound(); onClose(); }}

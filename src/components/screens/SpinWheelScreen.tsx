@@ -51,7 +51,23 @@ interface SpinWheelScreenProps {
   userId?: string;
 }
 
-const WA_REDEEM_URL = 'https://wa.me/6285777131454';
+const WA_ADMIN_PHONE = '6285777131454';
+
+function openWhatsAppToAdmin(message: string) {
+  const encoded = encodeURIComponent(message);
+  const webUrl = `https://api.whatsapp.com/send?phone=${WA_ADMIN_PHONE}&text=${encoded}`;
+  const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
+
+  if (isMobile) {
+    window.location.href = webUrl;
+    return;
+  }
+
+  const popup = window.open(webUrl, '_blank', 'noopener,noreferrer');
+  if (!popup) {
+    window.location.href = webUrl;
+  }
+}
 
 type Phase = 'loading' | 'card' | 'ready' | 'spinning' | 'result' | 'summary' | 'voucher';
 
@@ -121,6 +137,7 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
   const [showClaimModal, setShowClaimModal] = useState(false);
   const [claimMessage, setClaimMessage] = useState('');
   const [generatingClaimMessage, setGeneratingClaimMessage] = useState(false);
+  const [summaryReady, setSummaryReady] = useState(false);
   // Canvas-based wheel for precise rendering
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rotationRef = useRef(0);
@@ -486,9 +503,11 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
     const nextIdx = currentSpin + 1;
     setCollectedResults(prev => [...prev, spinResults[currentSpin]]);
     if (nextIdx >= totalSpins) {
+      setSummaryReady(false);
       const updated = applyResults();
       onDataChange(updated);
       setPhase('summary');
+      window.setTimeout(() => setSummaryReady(true), 220);
     } else {
       setCurrentSpin(nextIdx);
       setPhase('ready');
@@ -651,7 +670,7 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
         redemptionId = row?.id || null;
       }
 
-      window.open(`${WA_REDEEM_URL}?text=${encodeURIComponent(msg)}`, '_blank', 'noopener,noreferrer');
+      openWhatsAppToAdmin(msg);
 
       if (redemptionId) {
         await updateVoucherRedemptionStatus(redemptionId, 'sent');
@@ -918,7 +937,7 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
         )}
 
         {/* ═══ PHASE: Summary ═══ */}
-        {phase === 'summary' && totalSpins > 0 && (
+        {phase === 'summary' && totalSpins > 0 && summaryReady && (
           <div className="w-full max-w-sm rounded-xl p-5 text-center"
             style={{
               background: 'linear-gradient(135deg, rgba(62,40,20,0.95) 0%, rgba(40,26,12,0.98) 100%)',
@@ -972,8 +991,21 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
                 textShadow: '0 1px 2px rgba(0,0,0,0.3)',
               }}
             >
-              {sendingWA ? '🤖 Menyiapkan pesan AI...' : '🎫 Claim Hadiah'}
+              {sendingWA ? '⏳ Menyiapkan pesan...' : '🎫 Claim Hadiah'}
             </button>
+          </div>
+        )}
+
+        {phase === 'summary' && !summaryReady && (
+          <div className="w-full max-w-sm rounded-xl p-5 text-center"
+            style={{
+              background: 'linear-gradient(135deg, rgba(62,40,20,0.95) 0%, rgba(40,26,12,0.98) 100%)',
+              border: '2px solid rgba(180,140,60,0.5)',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+            }}
+          >
+            <div className="w-8 h-8 mx-auto mb-2 border-2 border-amber-400/30 border-t-amber-300 rounded-full animate-spin" />
+            <p className="text-xs text-amber-300/80 font-bold">Menyiapkan hasil spin...</p>
           </div>
         )}
 
@@ -1050,7 +1082,7 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
             }}
           >
             <h3 className="text-base font-black text-emerald-300 mb-1">🎫 Claim Hadiah Lucky Spin</h3>
-            <p className="text-[10px] text-emerald-200/70 mb-1">Pesan WA akan digenerate AI dan siap kirim ke admin.</p>
+            <p className="text-[10px] text-emerald-200/70 mb-1">Pesan WA akan disiapkan otomatis untuk admin.</p>
             <p className="text-[10px] text-amber-300/90 mb-3 font-bold">Langkah ini wajib. Card tidak bisa ditutup sebelum klik claim.</p>
 
             <div className="mb-3 rounded-lg p-2"
@@ -1091,7 +1123,7 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
                   color: '#a5f3fc',
                 }}
               >
-                {generatingClaimMessage ? 'Generating...' : 'Generate Ulang'}
+                {generatingClaimMessage ? 'Menyiapkan pesan...' : 'Siapkan Ulang'}
               </button>
               <button
                 onClick={() => handleSendVoucherToWhatsApp(claimMessage)}
