@@ -172,21 +172,8 @@ export default function App() {
     setActiveStorageUser(authUser?.id ?? null);
   }, [authUser]);
 
-  // Helper: detect if a profile needs onboarding (auto-created by OAuth, never set up).
-  // DB defaults character_id to 'agree', so checking characterId alone is not enough.
-  // Instead, check profilePhoto — it is null for auto-created profiles and only set
-  // after the user completes the in-app photo capture step during onboarding.
-  const needsOnboarding = useCallback(
-    (profile: { characterId?: string | null; profilePhoto?: string | null } | null | undefined): boolean =>
-      !profile || !profile.profilePhoto,
-    [],
-  );
-
   useEffect(() => {
-    if (!authChecked || !introReady) return;
-    // Only run routing logic from 'intro' (initial load / OAuth redirect)
-    // or 'login' (auth state changed while on login screen, e.g. popup flow)
-    if (gameState !== 'intro' && gameState !== 'login') return;
+    if (!authChecked || !introReady || gameState !== 'intro') return;
 
     if (authUser) {
       // Admin session: if user is admin and last state was adminDashboard, restore it
@@ -197,7 +184,14 @@ export default function App() {
         return;
       }
 
-      // Try loading from cache first for instant UX (returning users)
+      // Try loading from Supabase first
+      // Helper: detect if a profile needs onboarding (auto-created by OAuth, never set up)
+      // Check both characterId AND profilePhoto — the DB defaults character_id to 'agree',
+      // so auto-created profiles pass the characterId check but have no avatar_url (profilePhoto).
+      // A fully-onboarded user must have both a character and a profile photo.
+      const needsOnboarding = (profile: { characterId?: string | null; profilePhoto?: string | null } | null | undefined): boolean =>
+        !profile || !profile.characterId || !profile.profilePhoto;
+
       const cachedData = loadGameData();
       if (cachedData.profile && !needsOnboarding(cachedData.profile)) {
         setPlayerName(cachedData.profile.name);
@@ -211,7 +205,6 @@ export default function App() {
         gameRef.current.state = resumeState;
       }
 
-      // Authoritative check from Supabase (may override cache if stale)
       loadGameDataFromSupabase(authUser.id)
         .then((supaData) => {
           const data = supaData;
@@ -228,8 +221,7 @@ export default function App() {
             setGameState(resumeState);
             gameRef.current.state = resumeState;
           } else {
-            // New user — profile auto-created by OAuth but onboarding not done.
-            // Force full onboarding: nameEntry → photoCapture → characterSelect → tutorial
+            // New user (no profile, or profile without characterId = onboarding not done)
             resetForFreshOnboarding();
             setPlayerName(authUser.displayName || authUser.username);
             setGameState('nameEntry');
@@ -248,7 +240,7 @@ export default function App() {
     setActiveStorageUser(null);
     setGameState('login');
     gameRef.current.state = 'login';
-  }, [authChecked, authUser, gameState, introReady, needsOnboarding, resetForFreshOnboarding]);
+  }, [authChecked, authUser, gameState, introReady, resetForFreshOnboarding]);
 
   const { loadingProgress, introFading } = useIntroLoader(gameState, gameRef, () => {
     setIntroReady(true);
@@ -425,8 +417,9 @@ export default function App() {
     if (!trimmed) return;
     if (trimmed !== playerName) setPlayerName(trimmed);
 
-    // If editing from settings (profile already exists), save and go back to menu
-    if (storeData.profile) {
+    // If editing from settings (profile fully onboarded), save and go back to menu
+    // Check profilePhoto to distinguish completed onboarding from auto-created profiles
+    if (storeData.profile?.profilePhoto) {
       const updated = saveProfile(storeData, {
         ...storeData.profile,
         name: trimmed,
@@ -451,8 +444,9 @@ export default function App() {
       return;
     }
 
-    // If editing photo from settings (profile already exists), save and return to menu
-    if (storeData.profile) {
+    // If editing photo from settings (profile fully onboarded), save and return to menu
+    // Check profilePhoto to distinguish completed onboarding from auto-created profiles
+    if (storeData.profile?.profilePhoto) {
       const updated = saveProfile(storeData, {
         ...storeData.profile,
         profilePhoto: camera.profilePhoto,
@@ -854,8 +848,8 @@ export default function App() {
           onSelect={setSelectedCharacterId}
           onContinue={() => {
             hapticMedium();
-            // First time → tutorial, returning → main menu
-            if (!storeData.profile) {
+            // First time (no photo = onboarding) → tutorial, returning → main menu
+            if (!storeData.profile?.profilePhoto) {
               setGameState('tutorial');
               gameRef.current.state = 'tutorial';
             } else {

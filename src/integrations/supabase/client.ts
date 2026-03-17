@@ -2,14 +2,8 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
-const DIRECT_SUPABASE_URL = "https://aezbtbqqmeuynjkqdxjz.supabase.co";
+const SUPABASE_URL = "https://aezbtbqqmeuynjkqdxjz.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFlemJ0YnFxbWV1eW5qa3FkeGp6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2NjEwNDEsImV4cCI6MjA4OTIzNzA0MX0.H7ic6Z24xONhJAzdTVXXRIoWc4bBgdcpEZBolz0SVUg";
-
-// In production, route through Vercel rewrites to bypass ISP blocks on supabase.co
-const isProduction = import.meta.env.PROD;
-const SUPABASE_URL = isProduction && typeof window !== 'undefined'
-  ? window.location.origin
-  : DIRECT_SUPABASE_URL;
 
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";

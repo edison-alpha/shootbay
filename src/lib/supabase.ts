@@ -1,6 +1,6 @@
 /**
  * Supabase Client Configuration
- *
+ * 
  * Singleton Supabase client instance for the entire application.
  * Uses VITE_ prefixed env vars so Vite exposes them to the browser bundle.
  */
