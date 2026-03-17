@@ -511,6 +511,10 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
   };
 
   const generateProfessionalWAMessage = useCallback(async () => {
+    const playerName = storeData.profile?.name?.trim() || 'Player';
+    const birthdayCard = storeData.mysteryBoxRewards.find((r) => r.type === 'birthday_card');
+    const hasBirthdayCard = Boolean(birthdayCard);
+
     const physicalPrizes = spinResults
       .filter((r) => r.segment.prizeType !== 'dimsum_bonus')
       .map((r) => `${r.segment.icon || '🎁'} ${r.segment.name || r.segment.label}`);
@@ -524,14 +528,17 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
       : 'Tidak ada hadiah fisik (hanya bonus dimsum)';
 
     const prompt = [
-      'Buat pesan WhatsApp berbahasa Indonesia yang profesional, panjang, sopan, dan hangat.',
-      'Tujuan: konfirmasi penukaran voucher hadiah lucky spin ke admin.',
-      'Format: salam pembuka, detail hadiah, kode voucher, penutup.',
-      'Wajib ada ucapan ulang tahun yang tulus dan elegan.',
+      'Buat pesan WhatsApp berbahasa Indonesia yang profesional, sopan, hangat, dan siap kirim ke admin.',
+      'Tujuan: konfirmasi penukaran voucher hadiah lucky spin dari Goblin Bay.',
+      'Format wajib: salam pembuka, identitas player, detail hadiah, kode voucher, penutup + permintaan konfirmasi.',
       `Hadiah fisik: ${prizeSummary}`,
       `Bonus dimsum: +${dimsumTotal}`,
       'Kode voucher: BAYUGANTENG',
-      'Gaya bahasa formal namun tetap ramah.',
+      `Nama player: ${playerName}`,
+      hasBirthdayCard
+        ? `Tambahkan ucapan ulang tahun yang elegan dan natural, serta kalimat: "Selamat ulang tahun, ini hadiah spesial dari Goblin Bay."`
+        : 'Jangan pakai tema ulang tahun kecuali ada konteks birthday card.',
+      'Gaya bahasa formal namun tetap ramah. Hindari kalimat terlalu panjang.',
     ].join('\n');
 
     const atxpConnection = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env?.VITE_ATXP_CONNECTION;
@@ -562,25 +569,30 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
       }
     }
 
+    const birthdayLine = hasBirthdayCard
+      ? 'Selamat ulang tahun, ini hadiah spesial dari Goblin Bay. Semoga hari istimewa ini membawa kebahagiaan, kesehatan, dan keberkahan untuk Anda.'
+      : '';
+
     return [
-      'Halo Admin Tim Hadiah,',
+      'Halo Admin Tim Hadiah Goblin Bay,',
       '',
-      'Perkenalkan, saya pemenang program Lucky Spin dan ingin melakukan konfirmasi penukaran voucher hadiah dengan rincian berikut:',
+      `Perkenalkan, saya ${playerName}. Saya ingin melakukan konfirmasi penukaran voucher hadiah Lucky Spin dengan detail berikut:`,
       '',
       `• Hadiah fisik: ${prizeSummary}`,
       `• Bonus dimsum: +${dimsumTotal}`,
       '• Kode voucher: BAYUGANTENG',
       '',
-      'Mohon bantuannya untuk proses verifikasi dan informasi mekanisme penukaran hadiah selanjutnya.',
+      'Mohon bantuannya untuk proses verifikasi dan informasi tahapan penukaran hadiah selanjutnya.',
+      birthdayLine,
       '',
-      'Sekaligus saya ingin menyampaikan ucapan ulang tahun yang tulus: semoga di hari istimewa ini senantiasa diberi kesehatan, kebahagiaan, kelancaran rezeki, serta keberhasilan dalam setiap langkah ke depan.',
-      '',
-      'Terima kasih atas perhatian dan pelayanannya. Saya menunggu konfirmasi dari tim admin.',
+      'Terima kasih atas perhatian dan bantuannya. Saya menunggu konfirmasi dari tim admin.',
       '',
       'Hormat saya,',
-      'Player Lucky Spin',
-    ].join('\n');
-  }, [spinResults]);
+      playerName,
+    ]
+      .filter(Boolean)
+      .join('\n');
+  }, [spinResults, storeData.mysteryBoxRewards, storeData.profile?.name]);
 
   const handleSendVoucherToWhatsApp = useCallback(async () => {
     if (sendingWA) return;
