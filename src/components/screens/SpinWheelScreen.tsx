@@ -846,9 +846,8 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
       >
         <button
           onClick={onBack}
-          disabled={phase === 'summary'}
           aria-label="Back to previous menu"
-          className="flex h-11 w-11 items-center justify-center rounded-lg text-amber-300 transition active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+          className="flex h-11 w-11 items-center justify-center rounded-lg text-amber-300 transition active:scale-95"
           style={{
             background: 'linear-gradient(180deg, rgba(80,50,20,0.9) 0%, rgba(50,30,10,0.95) 100%)',
             border: '1px solid rgba(180,140,60,0.4)',
