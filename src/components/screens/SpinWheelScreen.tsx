@@ -126,6 +126,37 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
     .filter((r) => r.type === 'spin_ticket')
     .reduce((sum, r) => sum + Math.max(0, r.spins || 0), 0);
   
+  // State declarations - MUST be declared before any useEffect that uses them
+  const [phase, setPhase] = useState<Phase>('loading');
+  const [segments, setSegments] = useState<WheelSegment[]>([]);
+  const [spinResults, setSpinResults] = useState<SpinResult[]>([]);
+  const [currentSpin, setCurrentSpin] = useState(0);
+  const [collectedResults, setCollectedResults] = useState<SpinResult[]>([]);
+  const [currentResult, setCurrentResult] = useState<SpinResult | null>(null);
+  const [sendingWA, setSendingWA] = useState(false);
+  const [retryAttempted, setRetryAttempted] = useState(false);
+  const [showClaimModal, setShowClaimModal] = useState(false);
+  const [claimMessage, setClaimMessage] = useState('');
+  const [generatingClaimMessage, setGeneratingClaimMessage] = useState(false);
+  const [summaryReady, setSummaryReady] = useState(false);
+  
+  // Canvas-based wheel for precise rendering
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const rotationRef = useRef(0);
+  const targetRotationRef = useRef(0);
+  const isSpinningRef = useRef(false);
+  const animFrameRef = useRef(0);
+  const imagesLoadedRef = useRef(false);
+  const loadedImagesRef = useRef<Record<string, HTMLImageElement>>({});
+  const segmentsRef = useRef<WheelSegment[]>([]);
+  
+  // Keep total spins stable for this screen session.
+  const [totalSpins] = useState(() => {
+    const spins = Math.min(3, availableSpins);
+    console.log('[SpinWheelScreen] Initialized with total spins:', spins);
+    return spins;
+  });
+  
   // Debug logging to track spin availability
   useEffect(() => {
     console.log('[SpinWheelScreen] Available spins:', availableSpins);
@@ -134,7 +165,6 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
   }, [availableSpins, storeData.mysteryBoxRewards]);
   
   // FIX: Retry mechanism if no spins detected on initial mount
-  const [retryAttempted, setRetryAttempted] = useState(false);
   useEffect(() => {
     if (availableSpins === 0 && !retryAttempted && phase === 'loading') {
       console.warn('[SpinWheelScreen] No spins detected on mount, retrying in 300ms...');
@@ -161,36 +191,6 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
       return () => clearTimeout(timer);
     }
   }, [availableSpins, retryAttempted, phase, storeData.mysteryBoxRewards, onBack]);
-  
-  // Keep total spins stable for this screen session.
-  // If storeData changes after applying results, we must not recalculate this,
-  // otherwise the flow can reset before summary/claim modal appears.
-  const [totalSpins] = useState(() => {
-    const spins = Math.min(3, availableSpins);
-    console.log('[SpinWheelScreen] Initialized with total spins:', spins);
-    return spins;
-  });
-
-  const [phase, setPhase] = useState<Phase>('loading');
-  const [segments, setSegments] = useState<WheelSegment[]>([]);
-  const [spinResults, setSpinResults] = useState<SpinResult[]>([]);
-  const [currentSpin, setCurrentSpin] = useState(0);
-  const [collectedResults, setCollectedResults] = useState<SpinResult[]>([]);
-  const [currentResult, setCurrentResult] = useState<SpinResult | null>(null);
-  const [sendingWA, setSendingWA] = useState(false);
-  const [showClaimModal, setShowClaimModal] = useState(false);
-  const [claimMessage, setClaimMessage] = useState('');
-  const [generatingClaimMessage, setGeneratingClaimMessage] = useState(false);
-  const [summaryReady, setSummaryReady] = useState(false);
-  // Canvas-based wheel for precise rendering
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const rotationRef = useRef(0);
-  const targetRotationRef = useRef(0);
-  const isSpinningRef = useRef(false);
-  const animFrameRef = useRef(0);
-  const imagesLoadedRef = useRef(false);
-  const loadedImagesRef = useRef<Record<string, HTMLImageElement>>({});
-  const segmentsRef = useRef<WheelSegment[]>([]);
 
   // Load prizes from Supabase
   useEffect(() => {
