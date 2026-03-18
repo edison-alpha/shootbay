@@ -164,10 +164,18 @@ export async function redeemMysteryBoxByCode(
   error?: string 
 }> {
   try {
+    // Type definition for RPC response
+    type RPCResponse = {
+      success: boolean;
+      box_data: MysteryBoxWithDetails | null;
+      error_message: string | null;
+      remaining_tickets: number;
+    };
+
     const { data, error } = await supabase.rpc('redeem_mystery_box_atomic', {
       p_user_id: userId,
       p_redemption_code: code.trim(),
-    });
+    }) as { data: RPCResponse[] | null; error: any };
 
     if (error) {
       console.error('[redeemMysteryBoxByCode] RPC error:', error);
