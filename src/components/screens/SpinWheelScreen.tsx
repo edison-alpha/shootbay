@@ -125,10 +125,51 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
   const availableSpins = storeData.mysteryBoxRewards
     .filter((r) => r.type === 'spin_ticket')
     .reduce((sum, r) => sum + Math.max(0, r.spins || 0), 0);
+  
+  // Debug logging to track spin availability
+  useEffect(() => {
+    console.log('[SpinWheelScreen] Available spins:', availableSpins);
+    console.log('[SpinWheelScreen] Mystery box rewards:', storeData.mysteryBoxRewards);
+    console.log('[SpinWheelScreen] Spin tickets:', storeData.mysteryBoxRewards.filter(r => r.type === 'spin_ticket'));
+  }, [availableSpins, storeData.mysteryBoxRewards]);
+  
+  // FIX: Retry mechanism if no spins detected on initial mount
+  const [retryAttempted, setRetryAttempted] = useState(false);
+  useEffect(() => {
+    if (availableSpins === 0 && !retryAttempted && phase === 'loading') {
+      console.warn('[SpinWheelScreen] No spins detected on mount, retrying in 300ms...');
+      const timer = setTimeout(() => {
+        setRetryAttempted(true);
+        // Force re-check by triggering a re-render
+        const recheck = storeData.mysteryBoxRewards
+          .filter((r) => r.type === 'spin_ticket')
+          .reduce((sum, r) => sum + Math.max(0, r.spins || 0), 0);
+        
+        console.log('[SpinWheelScreen] Retry check result:', recheck);
+        
+        if (recheck > 0) {
+          console.log('[SpinWheelScreen] ✅ Retry successful, spins found:', recheck);
+          // Force component to re-evaluate by going back and forward
+          onBack();
+          setTimeout(() => {
+            console.log('[SpinWheelScreen] Please navigate back to spin wheel');
+          }, 100);
+        } else {
+          console.error('[SpinWheelScreen] ❌ Retry failed, still no spins found');
+        }
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [availableSpins, retryAttempted, phase, storeData.mysteryBoxRewards, onBack]);
+  
   // Keep total spins stable for this screen session.
   // If storeData changes after applying results, we must not recalculate this,
   // otherwise the flow can reset before summary/claim modal appears.
-  const [totalSpins] = useState(() => Math.min(3, availableSpins));
+  const [totalSpins] = useState(() => {
+    const spins = Math.min(3, availableSpins);
+    console.log('[SpinWheelScreen] Initialized with total spins:', spins);
+    return spins;
+  });
 
   const [phase, setPhase] = useState<Phase>('loading');
   const [segments, setSegments] = useState<WheelSegment[]>([]);
@@ -831,6 +872,59 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
                 background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent)',
                 animation: 'shimmer 2.5s ease-in-out infinite',
               }} />
+            </button>
+          </div>
+        )}
+
+        {/* ═══ WARNING: No Spins Available ═══ */}
+        {totalSpins === 0 && (
+          <div className="w-full max-w-sm animate-fade-in">
+            <div className="rounded-2xl p-5 mb-4 relative overflow-hidden"
+              style={{
+                background: 'linear-gradient(135deg, rgba(80,20,20,0.95) 0%, rgba(50,10,10,0.98) 100%)',
+                border: '3px solid rgba(239,68,68,0.5)',
+                boxShadow: '0 8px 32px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,100,100,0.15)',
+              }}
+            >
+              <div className="text-center">
+                <div className="text-5xl mb-3">⚠️</div>
+                <h2 className="text-xl font-black text-red-200 mb-2" style={{ textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>
+                  No Spins Available
+                </h2>
+                <div className="w-12 h-0.5 mx-auto rounded-full mb-3" style={{ background: 'linear-gradient(90deg, transparent, #dc2626, transparent)' }} />
+                <p className="text-sm text-red-300/90 leading-relaxed mb-2">
+                  You don't have any spin tickets available.
+                </p>
+                <p className="text-xs text-red-400/70 leading-relaxed mb-2">
+                  Spin tickets are obtained from mystery boxes that include spin wheel rewards.
+                  {!retryAttempted && ' Checking again...'}
+                </p>
+                {retryAttempted && (
+                  <div className="mt-3 rounded-lg p-3" style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)' }}>
+                    <p className="text-xs text-red-300/90 mb-2 font-bold">Troubleshooting Steps:</p>
+                    <ol className="text-[10px] text-red-300/80 text-left space-y-1 list-decimal list-inside">
+                      <li>Go back and re-open the mystery box</li>
+                      <li>Check if box has "include_spin_wheel: true"</li>
+                      <li>Refresh the page (F5)</li>
+                      <li>Contact admin if issue persists</li>
+                    </ol>
+                    <p className="text-[9px] text-red-400/60 mt-2">
+                      Debug: availableSpins={availableSpins}, totalSpins={totalSpins}, retried={retryAttempted ? 'yes' : 'no'}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <button onClick={onBack}
+              className="w-full py-4 rounded-xl text-base font-black uppercase tracking-widest transition active:scale-[0.97]"
+              style={{
+                background: 'linear-gradient(180deg, rgba(80,50,20,0.8) 0%, rgba(50,30,10,0.9) 100%)',
+                border: '2px solid rgba(180,140,60,0.3)',
+                color: '#d4a547',
+              }}
+            >
+              ← Back to Menu
             </button>
           </div>
         )}

@@ -54,6 +54,7 @@ export const MysteryBoxScreen: React.FC<MysteryBoxScreenProps> = ({
   const [showReward, setShowReward] = useState(false);
   const [userBoxes, setUserBoxes] = useState<MysteryBoxWithDetails[]>([]);
   const [loadingBoxes, setLoadingBoxes] = useState(false);
+  const [stateSyncing, setStateSyncing] = useState(false);
 
   // Enable realtime updates for mystery boxes
   useMysteryBoxRealtime(userId);
@@ -154,8 +155,15 @@ export const MysteryBoxScreen: React.FC<MysteryBoxScreenProps> = ({
       // If spin wheel is included, add spin ticket reward
       const extras: MysteryBoxReward[] = [];
       if (result.box.include_spin_wheel && result.box.spin_count > 0) {
+        // Use unique ID to prevent collisions when opening multiple boxes
+        const uniqueId = `spin_${result.box.id}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        console.log('[MysteryBox] Adding spin ticket:', {
+          boxId: result.box.id,
+          spinCount: result.box.spin_count,
+          uniqueId,
+        });
         extras.push({
-          id: `spin_from_box_${Date.now()}`,
+          id: uniqueId,
           type: 'spin_ticket',
           name: `🎰 Lucky Spin x${result.box.spin_count}`,
           description: `You won ${result.box.spin_count} spins on the Lucky Wheel!`,
@@ -163,6 +171,11 @@ export const MysteryBoxScreen: React.FC<MysteryBoxScreenProps> = ({
           spins: result.box.spin_count,
           claimed: true,
           claimedAt: Date.now(),
+        });
+      } else {
+        console.log('[MysteryBox] No spin wheel in this box:', {
+          include_spin_wheel: result.box.include_spin_wheel,
+          spin_count: result.box.spin_count,
         });
       }
 
@@ -172,8 +185,31 @@ export const MysteryBoxScreen: React.FC<MysteryBoxScreenProps> = ({
         ticketsUsed: storeData.ticketsUsed + 1,
         mysteryBoxRewards: [...storeData.mysteryBoxRewards, localRewardData, ...extras],
       };
-      saveGameData(updatedStoreData);
+      
+      console.log('[MysteryBox] Saving updated store data:', {
+        totalRewards: updatedStoreData.mysteryBoxRewards.length,
+        spinTickets: updatedStoreData.mysteryBoxRewards.filter(r => r.type === 'spin_ticket'),
+      });
+      
+      // Ensure state is saved and propagated before continuing
+      setStateSyncing(true);
+      await saveGameData(updatedStoreData);
       onDataChange(updatedStoreData);
+      
+      // Small delay to ensure React state update completes
+      await new Promise(resolve => setTimeout(resolve, 100));
+      setStateSyncing(false);
+      
+      console.log('[MysteryBox] State sync complete, proceeding to opening phase');
+      
+      // Verify spin tickets are in state before proceeding
+      const verifySpinTickets = updatedStoreData.mysteryBoxRewards.filter(r => r.type === 'spin_ticket');
+      console.log('[MysteryBox] Final state verification:', {
+        totalRewards: updatedStoreData.mysteryBoxRewards.length,
+        spinTickets: verifySpinTickets,
+        totalSpins: verifySpinTickets.reduce((sum, r) => sum + (r.spins || 0), 0),
+      });
+      
       setLocalReward({ reward: localRewardData, extraRewards: extras.length > 0 ? extras : undefined });
       setPhase('opening');
 
@@ -438,7 +474,7 @@ const InputPhase: React.FC<{
         }}
       >
         {loading ? (
-          <span className="animate-pulse">Opening...</span>
+          <span className="animate-pulse">Opening & Syncing...</span>
         ) : (
           <>
             <img src={chestClosed} alt="" className="w-5 h-5" style={{ filter: 'brightness(1.3)' }} />
@@ -900,7 +936,8 @@ const RevealedPhase: React.FC<{
       <div className="sticky bottom-0 z-10 w-full space-y-2 pb-1 pt-2"
         style={{ background: 'linear-gradient(180deg, rgba(0,0,0,0), rgba(8,6,3,0.88) 35%)' }}
       >
-        {canShowOtherRewards && hasSpinReward && onSpinWheel && (
+        {/* FIX: Show spin button immediately, don't wait for wish completion */}
+        {hasSpinReward && onSpinWheel && (
           <button onClick={onSpinWheel}
             className="w-full py-3.5 rounded-xl text-sm font-black uppercase tracking-wider transition active:scale-[0.97] relative overflow-hidden flex items-center justify-center gap-2"
             style={{
