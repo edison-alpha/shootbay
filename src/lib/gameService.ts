@@ -833,6 +833,7 @@ export async function consumeSpinTickets(
     console.log('[consumeSpinTickets] Consuming', spinCount, 'spins for user', userId);
     
     // Call Supabase function to consume spin tickets atomically
+    // @ts-expect-error - RPC function not in generated types yet, will work at runtime
     const { data, error } = await supabase.rpc('consume_spin_tickets', {
       p_user_id: userId,
       p_spin_count: spinCount,
