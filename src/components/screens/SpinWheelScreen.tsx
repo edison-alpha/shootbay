@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import type { GameStoreData } from '../../store/gameStore';
 import { saveGameData } from '../../store/gameStore';
-import { fetchSpinWheelPrizes, createVoucherRedemption, updateVoucherRedemptionStatus, syncInventoryItem } from '../../lib/gameService';
+import { fetchSpinWheelPrizes, createVoucherRedemption, updateVoucherRedemptionStatus, syncInventoryItem, consumeSpinTickets, addSpinWheelPrizesToInventory } from '../../lib/gameService';
 import type { SpinWheelPrizeRow } from '../../lib/gameService';
 import { playClickSound, playSpinStartSound, playSpinTickSound, playWinSound } from '../../utils/uiAudio';
 import arenaBg from '../../assets/arena_background.webp';
@@ -510,11 +510,29 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
     animFrameRef.current = requestAnimationFrame(animateSpin);
   }, [currentSpin, spinResults, animateSpin]);
 
-  const applyResults = useCallback(() => {
+  const applyResults = useCallback(async () => {
     let updated = { ...storeData };
     const items = [...updated.inventory];
     const consumedSpins = spinResults.length;
 
+    console.log('[applyResults] Starting to apply spin results:', {
+      consumedSpins,
+      userId,
+      spinResults: spinResults.length,
+    });
+
+    // Consume spin tickets from Supabase FIRST
+    if (userId) {
+      try {
+        await consumeSpinTickets(userId, consumedSpins);
+        console.log('[applyResults] Successfully consumed spin tickets in Supabase');
+      } catch (err) {
+        console.error('[applyResults] Failed to consume spin tickets:', err);
+        // Continue anyway to update local state
+      }
+    }
+
+    // Update local state - consume spin tickets
     let remainingToConsume = consumedSpins;
     const rewardsAfterConsume = updated.mysteryBoxRewards.map((reward) => {
       if (reward.type !== 'spin_ticket' || remainingToConsume <= 0) return reward;
@@ -523,26 +541,60 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
       const used = Math.min(currentSpins, remainingToConsume);
       remainingToConsume -= used;
 
+      console.log('[applyResults] Consuming spins from reward:', {
+        rewardId: reward.id,
+        currentSpins,
+        used,
+        remaining: currentSpins - used,
+      });
+
       return {
         ...reward,
         spins: currentSpins - used,
       };
     });
 
+    // Filter out rewards with 0 spins
+    const filteredRewards = rewardsAfterConsume.filter(reward => {
+      if (reward.type === 'spin_ticket') {
+        return (reward.spins || 0) > 0;
+      }
+      return true;
+    });
+
+    console.log('[applyResults] Rewards after consumption:', {
+      before: updated.mysteryBoxRewards.length,
+      after: filteredRewards.length,
+      filtered: updated.mysteryBoxRewards.length - filteredRewards.length,
+    });
+
+    // Add prizes to inventory
+    const physicalPrizes: Array<{ name: string; icon: string; description: string }> = [];
+    
     for (const result of spinResults) {
       const seg = result.segment;
       if (seg.prizeType === 'dimsum_bonus') {
         updated.totalDimsum += (seg.value || 2);
       } else {
+        const prizeName = seg.name || `${seg.icon || '🎁'} ${seg.label}`;
+        const prizeIcon = seg.icon || '🎁';
+        const prizeDesc = seg.description || `${seg.label} from lucky spin!`;
+        
+        physicalPrizes.push({
+          name: prizeName,
+          icon: prizeIcon,
+          description: prizeDesc,
+        });
+        
         const existingItem = items.find(i => i.id === `spin_${seg.id}`);
         if (existingItem) {
           existingItem.quantity += 1;
         } else {
           items.push({
             id: `spin_${seg.id}`,
-            name: seg.name || `${seg.icon || '🎁'} ${seg.label}`,
-            description: seg.description || `${seg.label} from lucky spin!`,
-            icon: seg.icon || '🎁',
+            name: prizeName,
+            description: prizeDesc,
+            icon: prizeIcon,
             quantity: 1,
             type: 'special',
           });
@@ -551,28 +603,30 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
     }
 
     updated.inventory = items;
-    updated.mysteryBoxRewards = rewardsAfterConsume;
+    updated.mysteryBoxRewards = filteredRewards;
+    
+    console.log('[applyResults] Saving updated game data:', {
+      inventoryItems: updated.inventory.length,
+      rewards: updated.mysteryBoxRewards.length,
+      totalDimsum: updated.totalDimsum,
+    });
+    
     saveGameData(updated);
     
-    // Sync inventory to Supabase
-    if (userId) {
-      for (const result of spinResults) {
-        if (result.segment.prizeType !== 'dimsum_bonus') {
-          syncInventoryItem(
-            userId,
-            result.segment.name || `${result.segment.icon || '🎁'} ${result.segment.label}`,
-            'special',
-            result.segment.icon || '🎁',
-            1
-          ).catch(err => console.error('Failed to sync inventory:', err));
-        }
+    // Sync prizes to Supabase inventory
+    if (userId && physicalPrizes.length > 0) {
+      try {
+        await addSpinWheelPrizesToInventory(userId, physicalPrizes);
+        console.log('[applyResults] Successfully synced prizes to Supabase');
+      } catch (err) {
+        console.error('[applyResults] Failed to sync prizes:', err);
       }
     }
     
     return updated;
   }, [storeData, spinResults, userId]);
 
-  const nextSpin = useCallback(() => {
+  const nextSpin = useCallback(async () => {
     playClickSound();
     const nextIdx = currentSpin + 1;
     
@@ -588,7 +642,7 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
     if (nextIdx >= totalSpins) {
       console.log('[SpinWheelScreen] All spins complete, showing summary');
       setSummaryReady(false);
-      const updated = applyResults();
+      const updated = await applyResults();
       onDataChange(updated);
       setPhase('summary');
       window.setTimeout(() => setSummaryReady(true), 220);

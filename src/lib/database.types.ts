@@ -186,6 +186,7 @@ export interface Database {
           opened_at: string | null;
           include_spin_wheel: boolean;
           spin_count: number;
+          spin_consumed: number;
           wish_flow_step: string | null;
           wish_input: string | null;
           wish_birth_day: number | null;
@@ -211,6 +212,7 @@ export interface Database {
           opened_at?: string | null;
           include_spin_wheel?: boolean;
           spin_count?: number;
+          spin_consumed?: number;
           wish_flow_step?: string | null;
           wish_input?: string | null;
           wish_birth_day?: number | null;
@@ -234,6 +236,7 @@ export interface Database {
           opened_at?: string | null;
           include_spin_wheel?: boolean;
           spin_count?: number;
+          spin_consumed?: number;
           wish_flow_step?: string | null;
           wish_input?: string | null;
           wish_birth_day?: number | null;

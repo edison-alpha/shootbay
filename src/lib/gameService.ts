@@ -18,7 +18,7 @@ const PROFILE_COLUMNS = 'id, display_name, avatar_url, character_id, total_dimsu
 const LEVEL_COLUMNS = 'level_id, dimsum_collected, dimsum_total, stars, completed, best_time' as const;
 const INVENTORY_COLUMNS = 'id, user_id, item_name, item_description, item_icon, item_type, quantity, redeemed, redeemed_at, created_at' as const;
 const LEADERBOARD_COLUMNS = 'id, user_id, player_name, profile_photo, total_dimsum, levels_completed, total_stars, created_at' as const;
-const MYSTERY_BOX_COLUMNS = 'id, name, description, custom_message, status, opened_at, prize_id, greeting_card_id, include_spin_wheel, spin_count, assigned_to, redemption_code, wish_flow_step, wish_input, wish_birth_day, wish_birth_month, wish_ai_reply, wish_completed, created_at' as const;
+const MYSTERY_BOX_COLUMNS = 'id, name, description, custom_message, status, opened_at, prize_id, greeting_card_id, include_spin_wheel, spin_count, spin_consumed, assigned_to, redemption_code, wish_flow_step, wish_input, wish_birth_day, wish_birth_month, wish_ai_reply, wish_completed, created_at' as const;
 const VOUCHER_COLUMNS = 'id, user_id, source_type, status, voucher_code, prizes_text, message, metadata, created_at, updated_at' as const;
 
 // ─── Level Progress Sync ──────────────────────────────────────────────────────
@@ -623,6 +623,8 @@ async function _loadGameDataFromSupabaseInner(userId: string): Promise<GameStore
     // Build mystery box rewards (including spin tickets from boxes with spin wheel)
     const mysteryBoxRewards: MysteryBoxReward[] = [];
     let totalBoxSpins = 0;
+    let totalConsumedSpins = 0;
+    
     if (boxResult.data) {
       for (const box of boxResult.data as MysteryBox[]) {
         mysteryBoxRewards.push({
@@ -636,17 +638,37 @@ async function _loadGameDataFromSupabaseInner(userId: string): Promise<GameStore
           claimedAt: box.opened_at ? new Date(box.opened_at).getTime() : undefined,
         });
 
-        // If the box includes a spin wheel, add a spin_ticket reward so the
-        // SpinWheelScreen can count available spins. Without this the client-side
-        // spin_ticket created during handleRedeem is lost on every realtime sync.
+        // If the box includes a spin wheel, calculate available spins
+        // Available = total spin_count - spin_consumed
         if (box.include_spin_wheel && box.spin_count > 0 && box.status === 'opened') {
+          const consumed = (box as any).spin_consumed || 0;
+          const available = Math.max(0, box.spin_count - consumed);
+          
           totalBoxSpins += box.spin_count;
+          totalConsumedSpins += consumed;
+          
+          console.log('[loadGameDataFromSupabase] Box spin info:', {
+            boxId: box.id,
+            boxName: box.name,
+            totalSpins: box.spin_count,
+            consumed,
+            available,
+          });
         }
       }
     }
 
+    // Calculate remaining spins (total - consumed - voucher redeemed)
+    const remainingSpins = Math.max(0, totalBoxSpins - totalConsumedSpins - consumedSpins);
+    
+    console.log('[loadGameDataFromSupabase] Spin calculation:', {
+      totalBoxSpins,
+      totalConsumedSpins,
+      voucherConsumedSpins: consumedSpins,
+      remainingSpins,
+    });
+    
     // Add spin_ticket rewards with remaining (unconsumed) spins
-    const remainingSpins = Math.max(0, totalBoxSpins - consumedSpins);
     if (remainingSpins > 0) {
       mysteryBoxRewards.push({
         id: `spin_from_boxes_${userId}`,
@@ -794,5 +816,67 @@ export async function saveFullGameDataToSupabase(
     invalidate(CK.leaderboard());
   } catch (err) {
     console.error('saveFullGameDataToSupabase error:', err);
+  }
+}
+
+// ─── Spin Ticket Consumption ──────────────────────────────────────────────────
+
+/**
+ * Consume spin tickets from mystery box rewards and sync to Supabase
+ * This ensures spin tickets are properly consumed and persisted
+ */
+export async function consumeSpinTickets(
+  userId: string,
+  spinCount: number,
+): Promise<void> {
+  try {
+    console.log('[consumeSpinTickets] Consuming', spinCount, 'spins for user', userId);
+    
+    // Call Supabase function to consume spin tickets atomically
+    const { data, error } = await supabase.rpc('consume_spin_tickets', {
+      p_user_id: userId,
+      p_spin_count: spinCount,
+    });
+
+    if (error) {
+      console.error('[consumeSpinTickets] Error:', error);
+      throw error;
+    }
+
+    console.log('[consumeSpinTickets] Success:', data);
+    
+    // Invalidate user mystery boxes cache
+    invalidate(CK.userMysteryBoxes(userId));
+  } catch (err) {
+    console.error('[consumeSpinTickets] Failed to consume spin tickets:', err);
+    throw err;
+  }
+}
+
+/**
+ * Add spin wheel prizes to user inventory in Supabase
+ */
+export async function addSpinWheelPrizesToInventory(
+  userId: string,
+  prizes: Array<{ name: string; icon: string; description: string }>,
+): Promise<void> {
+  try {
+    console.log('[addSpinWheelPrizesToInventory] Adding prizes for user', userId, prizes);
+    
+    // Sync each prize to inventory
+    for (const prize of prizes) {
+      await syncInventoryItem(
+        userId,
+        prize.name,
+        'special',
+        prize.icon,
+        1
+      );
+    }
+    
+    console.log('[addSpinWheelPrizesToInventory] Success');
+  } catch (err) {
+    console.error('[addSpinWheelPrizesToInventory] Failed:', err);
+    throw err;
   }
 }

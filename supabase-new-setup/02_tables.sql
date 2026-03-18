@@ -87,6 +87,7 @@ CREATE TABLE IF NOT EXISTS public.mystery_boxes (
   -- Spin wheel integration
   include_spin_wheel BOOLEAN NOT NULL DEFAULT false,
   spin_count INT NOT NULL DEFAULT 0,
+  spin_consumed INT NOT NULL DEFAULT 0,
   -- Birthday wish flow
   wish_flow_step TEXT,
   wish_input TEXT,

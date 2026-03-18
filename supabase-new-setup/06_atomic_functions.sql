@@ -182,3 +182,88 @@ GRANT EXECUTE ON FUNCTION public.sync_level_best_values(UUID, INT, INT, INT, REA
 -- 3. is_admin: Reduces RLS subquery overhead
 -- 4. sync_level_best_values: 2-3 queries → 1 query (60% faster)
 -- ═══════════════════════════════════════════════════════════════════════════
+
+
+-- ─── Consume Spin Tickets ─────────────────────────────────────────────────
+-- Atomically consume spin tickets from mystery boxes
+-- Ensures proper tracking and prevents race conditions
+CREATE OR REPLACE FUNCTION public.consume_spin_tickets(
+  p_user_id UUID,
+  p_spin_count INTEGER
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_box RECORD;
+  v_remaining_spins INTEGER := p_spin_count;
+  v_consumed_count INTEGER := 0;
+  v_updated_boxes JSONB := '[]'::JSONB;
+BEGIN
+  -- Validate input
+  IF p_spin_count <= 0 THEN
+    RAISE EXCEPTION 'Spin count must be positive';
+  END IF;
+
+  -- Lock user's mystery boxes for update
+  FOR v_box IN
+    SELECT id, spin_count, spin_consumed
+    FROM public.mystery_boxes
+    WHERE assigned_to = p_user_id
+      AND include_spin_wheel = true
+      AND spin_count > 0
+      AND (spin_consumed IS NULL OR spin_consumed < spin_count)
+    ORDER BY created_at ASC
+    FOR UPDATE
+  LOOP
+    -- Calculate available spins for this box
+    DECLARE
+      v_box_consumed INTEGER := COALESCE(v_box.spin_consumed, 0);
+      v_box_available INTEGER := v_box.spin_count - v_box_consumed;
+      v_to_consume INTEGER := LEAST(v_box_available, v_remaining_spins);
+    BEGIN
+      -- Update spin_consumed for this box
+      UPDATE public.mystery_boxes
+      SET 
+        spin_consumed = v_box_consumed + v_to_consume,
+        updated_at = NOW()
+      WHERE id = v_box.id;
+
+      -- Track consumed count
+      v_consumed_count := v_consumed_count + v_to_consume;
+      v_remaining_spins := v_remaining_spins - v_to_consume;
+
+      -- Add to result
+      v_updated_boxes := v_updated_boxes || JSONB_BUILD_OBJECT(
+        'box_id', v_box.id,
+        'consumed', v_to_consume,
+        'total_consumed', v_box_consumed + v_to_consume,
+        'total_spins', v_box.spin_count
+      );
+
+      -- Exit if we've consumed enough
+      EXIT WHEN v_remaining_spins <= 0;
+    END;
+  END LOOP;
+
+  -- Check if we consumed all requested spins
+  IF v_consumed_count < p_spin_count THEN
+    RAISE EXCEPTION 'Not enough spin tickets available. Requested: %, Available: %', 
+      p_spin_count, v_consumed_count;
+  END IF;
+
+  -- Return result
+  RETURN JSONB_BUILD_OBJECT(
+    'success', true,
+    'consumed_count', v_consumed_count,
+    'updated_boxes', v_updated_boxes
+  );
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.consume_spin_tickets(UUID, INTEGER) TO authenticated;
+
+COMMENT ON FUNCTION public.consume_spin_tickets IS 
+  'Atomically consume spin tickets from mystery boxes. Ensures proper tracking of spin consumption.';
