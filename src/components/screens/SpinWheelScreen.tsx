@@ -162,6 +162,8 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
   const [claimMessage, setClaimMessage] = useState('');
   const [generatingClaimMessage, setGeneratingClaimMessage] = useState(false);
   const [summaryReady, setSummaryReady] = useState(false);
+  const [resultsApplied, setResultsApplied] = useState(false);
+  const [claimCompleted, setClaimCompleted] = useState(false);
   
   // Canvas-based wheel for precise rendering
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -642,16 +644,21 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
     if (nextIdx >= totalSpins) {
       console.log('[SpinWheelScreen] All spins complete, showing summary');
       setSummaryReady(false);
-      const updated = await applyResults();
-      onDataChange(updated);
+      
+      // DON'T apply results yet - wait for user to claim
+      // Just show summary
       setPhase('summary');
+      
+      // Generate claim message in background
+      prepareClaimMessage();
+      
       window.setTimeout(() => setSummaryReady(true), 220);
     } else {
       console.log('[SpinWheelScreen] Moving to next spin:', nextIdx);
       setCurrentSpin(nextIdx);
       setPhase('ready');
     }
-  }, [currentSpin, totalSpins, spinResults, applyResults, onDataChange]);
+  }, [currentSpin, totalSpins, spinResults]);
 
   // Draw wheel when phase changes to ready
   useEffect(() => {
@@ -690,8 +697,9 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
 
     const prompt = [
       'Buat pesan WhatsApp berbahasa Indonesia yang profesional, sopan, hangat, dan siap kirim ke admin.',
+      'WAJIB mulai dengan: "Hallo mas pacar Bayu Mukti Wibowo"',
       'Tujuan: konfirmasi penukaran voucher hadiah lucky spin dari Goblin Bay.',
-      'Format wajib: salam pembuka, identitas player, detail hadiah, kode voucher, penutup + permintaan konfirmasi.',
+      'Format: intro personal, identitas player, detail hadiah, kode voucher, penutup + permintaan konfirmasi.',
       `Hadiah fisik: ${prizeSummary}`,
       `Bonus dimsum: +${dimsumTotal}`,
       'Kode voucher: BAYUGANTENG',
@@ -735,7 +743,7 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
       : '';
 
     return [
-      'Halo Admin Tim Hadiah Goblin Bay,',
+      'Hallo mas pacar Bayu Mukti Wibowo,',
       '',
       `Perkenalkan, saya ${playerName}. Saya ingin melakukan konfirmasi penukaran voucher hadiah Lucky Spin dengan detail berikut:`,
       '',
@@ -766,16 +774,24 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
     }
   }, [generateProfessionalWAMessage, generatingClaimMessage]);
 
+  // Auto-generate message when summary is ready (background)
   useEffect(() => {
-    if (phase !== 'summary') return;
-    setShowClaimModal(true);
-    if (!claimMessage) {
+    if (phase === 'summary' && summaryReady && !claimMessage && !generatingClaimMessage) {
       prepareClaimMessage();
     }
-  }, [phase, claimMessage, prepareClaimMessage]);
+  }, [phase, summaryReady, claimMessage, generatingClaimMessage, prepareClaimMessage]);
 
   const handleSendVoucherToWhatsApp = useCallback(async (readyMessage?: string) => {
     if (sendingWA) return;
+    
+    // Apply results FIRST before sending to WA
+    if (!resultsApplied) {
+      console.log('[handleSendVoucherToWhatsApp] Applying results before sending to WA');
+      const updated = await applyResults();
+      onDataChange(updated);
+      setResultsApplied(true);
+    }
+    
     setSendingWA(true);
     try {
       const msg = readyMessage?.trim() || await generateProfessionalWAMessage();
@@ -815,11 +831,12 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
         await updateVoucherRedemptionStatus(redemptionId, 'sent');
       }
 
+      setClaimCompleted(true);
       setShowClaimModal(false);
     } finally {
       setSendingWA(false);
     }
-  }, [generateProfessionalWAMessage, sendingWA, spinResults, userId]);
+  }, [generateProfessionalWAMessage, sendingWA, spinResults, userId, resultsApplied, applyResults, onDataChange]);
 
   return (
     <div className="absolute inset-0 z-50 flex flex-col overflow-hidden"
@@ -1167,18 +1184,30 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
             )}
 
             <button
-              onClick={() => setShowClaimModal(true)}
-              disabled={sendingWA}
+              onClick={() => {
+                if (claimCompleted) {
+                  onBack();
+                } else {
+                  setShowClaimModal(true);
+                }
+              }}
+              disabled={sendingWA || generatingClaimMessage}
               className="w-full py-3 rounded-xl text-sm font-black uppercase tracking-wider transition active:scale-95 flex items-center justify-center disabled:opacity-60"
               style={{
-                background: 'linear-gradient(180deg, #059669 0%, #047857 100%)',
-                border: '2px solid rgba(52,211,153,0.5)',
-                boxShadow: '0 4px 16px rgba(5,150,105,0.4)',
+                background: claimCompleted 
+                  ? 'linear-gradient(180deg, #b45309, #78350f)'
+                  : 'linear-gradient(180deg, #059669 0%, #047857 100%)',
+                border: claimCompleted
+                  ? '2px solid rgba(251,191,36,0.4)'
+                  : '2px solid rgba(52,211,153,0.5)',
+                boxShadow: claimCompleted
+                  ? '0 4px 16px rgba(180,100,10,0.4)'
+                  : '0 4px 16px rgba(5,150,105,0.4)',
                 color: '#ecfdf5',
                 textShadow: '0 1px 2px rgba(0,0,0,0.3)',
               }}
             >
-              {sendingWA ? '⏳ Menyiapkan pesan...' : '🎫 Claim Hadiah'}
+              {claimCompleted ? '← Back to Menu' : (generatingClaimMessage ? '⏳ Menyiapkan...' : '🎫 Claim Hadiah')}
             </button>
           </div>
         )}
@@ -1336,7 +1365,7 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
                   color: '#ecfdf5',
                 }}
               >
-                {sendingWA ? 'Sending...' : 'Kirim ke WA'}
+                {sendingWA ? '⏳ Claiming...' : 'Kirim ke WA'}
               </button>
             </div>
             
