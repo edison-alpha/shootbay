@@ -71,47 +71,75 @@ function openWhatsAppToAdmin(message: string) {
 
 type Phase = 'loading' | 'card' | 'ready' | 'spinning' | 'result' | 'summary' | 'voucher';
 
-/** Generate rigged spin results: 2 dimsum + 1 random physical prize */
-function generateSpinResultsFromSegments(segments: WheelSegment[]): SpinResult[] {
+/** 
+ * Generate spin results with guaranteed prizes:
+ * - Minimum 3 spins required
+ * - Hilux: Never wins (weight = 0)
+ * - Physical prizes (Baju/Jam/Sepatu): Always get exactly 1
+ * - Dimsum: Fill remaining spins
+ */
+function generateSpinResultsFromSegments(segments: WheelSegment[], spinCount: number): SpinResult[] {
+  const MIN_SPINS = 3;
+  const actualSpinCount = Math.max(MIN_SPINS, spinCount);
+  
   const dimsumSegments = segments.filter(s => s.prizeType === 'dimsum_bonus');
   const physicalSegments = segments.filter(s => s.prizeType !== 'dimsum_bonus');
+  
+  // Filter out Hilux from physical prizes
   const isHilux = (seg: WheelSegment) => {
     const key = `${seg.id} ${seg.label} ${seg.name ?? ''}`.toLowerCase();
     return key.includes('hilux');
   };
+  const eligiblePhysical = physicalSegments.filter(seg => !isHilux(seg));
   
   const results: SpinResult[] = [];
   
-  // 2 dimsum spins
-  for (let i = 0; i < 2; i++) {
-    const seg = dimsumSegments.length > 0 ? dimsumSegments[0] : segments[0];
-    results.push({ segmentIndex: segments.indexOf(seg), segment: seg });
-  }
+  console.log('[generateSpinResults] Configuration:', {
+    requestedSpins: spinCount,
+    actualSpins: actualSpinCount,
+    minSpins: MIN_SPINS,
+    totalSegments: segments.length,
+    dimsumSegments: dimsumSegments.length,
+    physicalSegments: eligiblePhysical.length,
+  });
   
-  // 1 random physical prize (weighted)
-  if (physicalSegments.length > 0) {
-    // IMPORTANT:
-    // - Hilux always has 0 probability (hard-locked)
-    // - weight = 0 means never selected
-    const safeWeight = (seg: WheelSegment) => {
-      if (isHilux(seg)) return 0;
-      return Math.max(0, seg.weight ?? 1);
-    };
-    const totalWeight = physicalSegments.reduce((sum, s) => sum + safeWeight(s), 0);
-    let pick = physicalSegments[0];
+  // RULE 1: Always get exactly 1 physical prize (Baju/Jam/Sepatu)
+  if (eligiblePhysical.length > 0) {
+    // Weighted random selection
+    const safeWeight = (seg: WheelSegment) => Math.max(0, seg.weight ?? 1);
+    const totalWeight = eligiblePhysical.reduce((sum, s) => sum + safeWeight(s), 0);
+    let pick = eligiblePhysical[0];
 
     if (totalWeight > 0) {
       let rand = Math.random() * totalWeight;
-      for (const seg of physicalSegments) {
+      for (const seg of eligiblePhysical) {
         rand -= safeWeight(seg);
-        if (rand <= 0) { pick = seg; break; }
+        if (rand <= 0) { 
+          pick = seg; 
+          break; 
+        }
       }
     }
 
     results.push({ segmentIndex: segments.indexOf(pick), segment: pick });
+    console.log('[generateSpinResults] Physical prize selected:', pick.label);
   } else {
-    results.push(results[0]); // fallback
+    console.warn('[generateSpinResults] No eligible physical prizes found!');
   }
+  
+  // RULE 2: Fill remaining spins with dimsum
+  const dimsumCount = actualSpinCount - 1; // Total spins - 1 physical
+  for (let i = 0; i < dimsumCount; i++) {
+    const seg = dimsumSegments.length > 0 ? dimsumSegments[0] : segments[0];
+    results.push({ segmentIndex: segments.indexOf(seg), segment: seg });
+  }
+  
+  console.log('[generateSpinResults] Final results:', {
+    totalSpins: results.length,
+    physicalPrizes: results.filter(r => r.segment.prizeType !== 'dimsum_bonus').length,
+    dimsumPrizes: results.filter(r => r.segment.prizeType === 'dimsum_bonus').length,
+    prizes: results.map(r => r.segment.label),
+  });
   
   return results;
 }
@@ -157,10 +185,15 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
     return spins;
   }, [storeData.mysteryBoxRewards]);
   
-  // OPTIMIZED: Calculate total spins once and keep stable for this session
+  // OPTIMIZED: Calculate total spins - minimum 3 spins required
   const totalSpins = useMemo(() => {
-    const spins = Math.min(3, availableSpins);
-    console.log('[SpinWheelScreen] Total spins for this session:', spins);
+    const MIN_SPINS = 3;
+    const spins = Math.max(MIN_SPINS, availableSpins);
+    console.log('[SpinWheelScreen] Total spins for this session:', spins, {
+      availableSpins,
+      minSpins: MIN_SPINS,
+      enforced: spins > availableSpins ? 'YES (below minimum)' : 'NO',
+    });
     return spins;
   }, [availableSpins]);
   
@@ -205,7 +238,7 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
       segmentsRef.current = segs;
       
       // Generate spin results based on available ticket count
-      const results = generateSpinResultsFromSegments(segs).slice(0, Math.max(0, totalSpins));
+      const results = generateSpinResultsFromSegments(segs, totalSpins);
       setSpinResults(results);
       
       setPhase('card');
@@ -214,7 +247,7 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
       const segs = DEFAULT_SEGMENTS.map(s => ({ ...s }));
       setSegments(segs);
       segmentsRef.current = segs;
-      setSpinResults(generateSpinResultsFromSegments(segs).slice(0, Math.max(0, totalSpins)));
+      setSpinResults(generateSpinResultsFromSegments(segs, totalSpins));
       setPhase('card');
     });
     
@@ -542,18 +575,29 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
   const nextSpin = useCallback(() => {
     playClickSound();
     const nextIdx = currentSpin + 1;
+    
+    console.log('[SpinWheelScreen] nextSpin called:', {
+      currentSpin,
+      nextIdx,
+      totalSpins,
+      willShowSummary: nextIdx >= totalSpins,
+    });
+    
     setCollectedResults(prev => [...prev, spinResults[currentSpin]]);
+    
     if (nextIdx >= totalSpins) {
+      console.log('[SpinWheelScreen] All spins complete, showing summary');
       setSummaryReady(false);
       const updated = applyResults();
       onDataChange(updated);
       setPhase('summary');
       window.setTimeout(() => setSummaryReady(true), 220);
     } else {
+      console.log('[SpinWheelScreen] Moving to next spin:', nextIdx);
       setCurrentSpin(nextIdx);
       setPhase('ready');
     }
-  }, [currentSpin, spinResults, applyResults, onDataChange]);
+  }, [currentSpin, totalSpins, spinResults, applyResults, onDataChange]);
 
   // Draw wheel when phase changes to ready
   useEffect(() => {

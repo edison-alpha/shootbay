@@ -1268,7 +1268,7 @@ const MysteryBoxTab: React.FC<{
     prize_id: '',
     greeting_card_id: '',
     include_spin_wheel: false,
-    spin_count: '1',
+    spin_count: '3', // Default minimum 3 spins
     assigned_to: '',
     custom_message: '',
   });
@@ -1280,7 +1280,7 @@ const MysteryBoxTab: React.FC<{
       prize_id: '',
       greeting_card_id: '',
       include_spin_wheel: false,
-      spin_count: '1',
+      spin_count: '3', // Default minimum 3 spins
       assigned_to: '',
       custom_message: '',
     });
@@ -1333,7 +1333,7 @@ const MysteryBoxTab: React.FC<{
           prize_id: form.prize_id || null,
           greeting_card_id: form.greeting_card_id || null,
           include_spin_wheel: form.include_spin_wheel,
-          spin_count: form.include_spin_wheel ? Math.max(1, parseInt(form.spin_count || '1', 10) || 1) : 0,
+          spin_count: form.include_spin_wheel ? Math.max(3, parseInt(form.spin_count || '3', 10) || 3) : 0,
           assigned_to: form.assigned_to || null,
           custom_message: form.custom_message || null,
           status: form.assigned_to ? 'delivered' : 'pending',
@@ -1359,7 +1359,7 @@ const MysteryBoxTab: React.FC<{
           prize_id: form.prize_id || null,
           greeting_card_id: form.greeting_card_id || null,
           include_spin_wheel: form.include_spin_wheel,
-          spin_count: form.include_spin_wheel ? Math.max(1, parseInt(form.spin_count || '1', 10) || 1) : 0,
+          spin_count: form.include_spin_wheel ? Math.max(3, parseInt(form.spin_count || '3', 10) || 3) : 0,
           custom_message: form.custom_message || null,
         }, allPlayerIds, adminId);
 
@@ -1386,7 +1386,7 @@ const MysteryBoxTab: React.FC<{
           prize_id: form.prize_id || null,
           greeting_card_id: form.greeting_card_id || null,
           include_spin_wheel: form.include_spin_wheel,
-          spin_count: form.include_spin_wheel ? Math.max(1, parseInt(form.spin_count || '1', 10) || 1) : 0,
+          spin_count: form.include_spin_wheel ? Math.max(3, parseInt(form.spin_count || '3', 10) || 3) : 0,
           custom_message: form.custom_message || null,
         }, selectedPlayerIds, adminId);
 
@@ -1413,7 +1413,7 @@ const MysteryBoxTab: React.FC<{
         prize_id: form.prize_id || null,
         greeting_card_id: form.greeting_card_id || null,
         include_spin_wheel: form.include_spin_wheel,
-        spin_count: form.include_spin_wheel ? Math.max(1, parseInt(form.spin_count || '1', 10) || 1) : 0,
+        spin_count: form.include_spin_wheel ? Math.max(3, parseInt(form.spin_count || '3', 10) || 3) : 0,
         assigned_to: form.assigned_to || null,
         custom_message: form.custom_message || null,
       }, adminId);
@@ -1462,7 +1462,7 @@ const MysteryBoxTab: React.FC<{
       prize_id: box.prize_id || '',
       greeting_card_id: box.greeting_card_id || '',
       include_spin_wheel: !!box.include_spin_wheel,
-      spin_count: String(Math.max(1, box.spin_count || 1)),
+      spin_count: String(Math.max(3, box.spin_count || 3)),
       assigned_to: box.assigned_to || '',
       custom_message: box.custom_message || '',
     });
@@ -1576,14 +1576,14 @@ const MysteryBoxTab: React.FC<{
 
               {form.include_spin_wheel && (
                 <div className="mt-2 w-full sm:w-40">
-                  <label className="text-[10px] font-bold text-gray-400 block mb-1">Spin Count</label>
+                  <label className="text-[10px] font-bold text-gray-400 block mb-1">Spin Count (Min: 3)</label>
                   <input
                     type="number"
-                    min={1}
+                    min={3}
                     value={form.spin_count}
                     onChange={(e) => setForm({ ...form, spin_count: e.target.value })}
                     className="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm outline-none"
-                    placeholder="1"
+                    placeholder="3"
                   />
                 </div>
               )}
@@ -1595,7 +1595,7 @@ const MysteryBoxTab: React.FC<{
               <div className="flex flex-wrap gap-1.5">
                 {form.greeting_card_id && <span className="text-[9px] px-2 py-0.5 rounded bg-purple-900/30 text-purple-300">💌 Card</span>}
                 {form.prize_id && <span className="text-[9px] px-2 py-0.5 rounded bg-amber-900/30 text-amber-300">🎁 Prize</span>}
-                {form.include_spin_wheel && <span className="text-[9px] px-2 py-0.5 rounded bg-emerald-900/30 text-emerald-300">🎰 Spin x{Math.max(1, parseInt(form.spin_count || '1', 10) || 1)}</span>}
+                {form.include_spin_wheel && <span className="text-[9px] px-2 py-0.5 rounded bg-emerald-900/30 text-emerald-300">🎰 Spin x{Math.max(3, parseInt(form.spin_count || '3', 10) || 3)}</span>}
                 {!form.greeting_card_id && !form.prize_id && !form.include_spin_wheel && (
                   <span className="text-[9px] px-2 py-0.5 rounded bg-red-900/30 text-red-300">No content selected</span>
                 )}
