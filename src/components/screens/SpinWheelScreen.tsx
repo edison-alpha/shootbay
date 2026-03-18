@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import type { GameStoreData } from '../../store/gameStore';
 import { saveGameData } from '../../store/gameStore';
 import { fetchSpinWheelPrizes, createVoucherRedemption, updateVoucherRedemptionStatus, syncInventoryItem } from '../../lib/gameService';
@@ -122,11 +122,7 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
   onBack,
   userId,
 }) => {
-  const availableSpins = storeData.mysteryBoxRewards
-    .filter((r) => r.type === 'spin_ticket')
-    .reduce((sum, r) => sum + Math.max(0, r.spins || 0), 0);
-  
-  // State declarations - MUST be declared before any useEffect that uses them
+  // State declarations - MUST be declared FIRST before any calculations or useEffect
   const [phase, setPhase] = useState<Phase>('loading');
   const [segments, setSegments] = useState<WheelSegment[]>([]);
   const [spinResults, setSpinResults] = useState<SpinResult[]>([]);
@@ -134,7 +130,6 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
   const [collectedResults, setCollectedResults] = useState<SpinResult[]>([]);
   const [currentResult, setCurrentResult] = useState<SpinResult | null>(null);
   const [sendingWA, setSendingWA] = useState(false);
-  const [retryAttempted, setRetryAttempted] = useState(false);
   const [showClaimModal, setShowClaimModal] = useState(false);
   const [claimMessage, setClaimMessage] = useState('');
   const [generatingClaimMessage, setGeneratingClaimMessage] = useState(false);
@@ -150,47 +145,33 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
   const loadedImagesRef = useRef<Record<string, HTMLImageElement>>({});
   const segmentsRef = useRef<WheelSegment[]>([]);
   
-  // Keep total spins stable for this screen session.
-  const [totalSpins] = useState(() => {
-    const spins = Math.min(3, availableSpins);
-    console.log('[SpinWheelScreen] Initialized with total spins:', spins);
+  // OPTIMIZED: Memoize available spins calculation to avoid re-calculation on every render
+  const availableSpins = useMemo(() => {
+    const spins = storeData.mysteryBoxRewards
+      .filter((r) => r.type === 'spin_ticket')
+      .reduce((sum, r) => sum + Math.max(0, r.spins || 0), 0);
+    console.log('[SpinWheelScreen] Calculated available spins:', spins, {
+      totalRewards: storeData.mysteryBoxRewards.length,
+      spinTickets: storeData.mysteryBoxRewards.filter(r => r.type === 'spin_ticket'),
+    });
     return spins;
-  });
+  }, [storeData.mysteryBoxRewards]);
   
-  // Debug logging to track spin availability
-  useEffect(() => {
-    console.log('[SpinWheelScreen] Available spins:', availableSpins);
-    console.log('[SpinWheelScreen] Mystery box rewards:', storeData.mysteryBoxRewards);
-    console.log('[SpinWheelScreen] Spin tickets:', storeData.mysteryBoxRewards.filter(r => r.type === 'spin_ticket'));
-  }, [availableSpins, storeData.mysteryBoxRewards]);
+  // OPTIMIZED: Calculate total spins once and keep stable for this session
+  const totalSpins = useMemo(() => {
+    const spins = Math.min(3, availableSpins);
+    console.log('[SpinWheelScreen] Total spins for this session:', spins);
+    return spins;
+  }, [availableSpins]);
   
-  // FIX: Retry mechanism if no spins detected on initial mount
+  // SAFEGUARD: If no spins detected on mount, show clear error message
   useEffect(() => {
-    if (availableSpins === 0 && !retryAttempted && phase === 'loading') {
-      console.warn('[SpinWheelScreen] No spins detected on mount, retrying in 300ms...');
-      const timer = setTimeout(() => {
-        setRetryAttempted(true);
-        // Force re-check by triggering a re-render
-        const recheck = storeData.mysteryBoxRewards
-          .filter((r) => r.type === 'spin_ticket')
-          .reduce((sum, r) => sum + Math.max(0, r.spins || 0), 0);
-        
-        console.log('[SpinWheelScreen] Retry check result:', recheck);
-        
-        if (recheck > 0) {
-          console.log('[SpinWheelScreen] ✅ Retry successful, spins found:', recheck);
-          // Force component to re-evaluate by going back and forward
-          onBack();
-          setTimeout(() => {
-            console.log('[SpinWheelScreen] Please navigate back to spin wheel');
-          }, 100);
-        } else {
-          console.error('[SpinWheelScreen] ❌ Retry failed, still no spins found');
-        }
-      }, 300);
-      return () => clearTimeout(timer);
+    if (availableSpins === 0 && phase === 'loading') {
+      console.warn('[SpinWheelScreen] ⚠️ No spins available on mount');
+      console.warn('[SpinWheelScreen] Mystery box rewards:', storeData.mysteryBoxRewards);
+      console.warn('[SpinWheelScreen] This might be a race condition - user should go back and re-enter');
     }
-  }, [availableSpins, retryAttempted, phase, storeData.mysteryBoxRewards, onBack]);
+  }, [availableSpins, phase, storeData.mysteryBoxRewards]);
 
   // Load prizes from Supabase
   useEffect(() => {
@@ -897,22 +878,18 @@ export const SpinWheelScreen: React.FC<SpinWheelScreenProps> = ({
                 </p>
                 <p className="text-xs text-red-400/70 leading-relaxed mb-2">
                   Spin tickets are obtained from mystery boxes that include spin wheel rewards.
-                  {!retryAttempted && ' Checking again...'}
                 </p>
-                {retryAttempted && (
-                  <div className="mt-3 rounded-lg p-3" style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)' }}>
-                    <p className="text-xs text-red-300/90 mb-2 font-bold">Troubleshooting Steps:</p>
-                    <ol className="text-[10px] text-red-300/80 text-left space-y-1 list-decimal list-inside">
-                      <li>Go back and re-open the mystery box</li>
-                      <li>Check if box has "include_spin_wheel: true"</li>
-                      <li>Refresh the page (F5)</li>
-                      <li>Contact admin if issue persists</li>
-                    </ol>
-                    <p className="text-[9px] text-red-400/60 mt-2">
-                      Debug: availableSpins={availableSpins}, totalSpins={totalSpins}, retried={retryAttempted ? 'yes' : 'no'}
-                    </p>
-                  </div>
-                )}
+                <div className="mt-3 rounded-lg p-3" style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)' }}>
+                  <p className="text-xs text-red-300/90 mb-2 font-bold">How to get spin tickets:</p>
+                  <ol className="text-[10px] text-red-300/80 text-left space-y-1 list-decimal list-inside">
+                    <li>Open mystery boxes with spin wheel rewards</li>
+                    <li>Check mystery box details for "include_spin_wheel: true"</li>
+                    <li>Spin tickets will be added to your rewards</li>
+                  </ol>
+                  <p className="text-[9px] text-red-400/60 mt-2">
+                    Debug: availableSpins={availableSpins}, totalSpins={totalSpins}
+                  </p>
+                </div>
               </div>
             </div>
 

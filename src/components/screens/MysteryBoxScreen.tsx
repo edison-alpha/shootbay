@@ -54,7 +54,6 @@ export const MysteryBoxScreen: React.FC<MysteryBoxScreenProps> = ({
   const [showReward, setShowReward] = useState(false);
   const [userBoxes, setUserBoxes] = useState<MysteryBoxWithDetails[]>([]);
   const [loadingBoxes, setLoadingBoxes] = useState(false);
-  const [stateSyncing, setStateSyncing] = useState(false);
 
   // Enable realtime updates for mystery boxes
   useMysteryBoxRealtime(userId);
@@ -191,18 +190,13 @@ export const MysteryBoxScreen: React.FC<MysteryBoxScreenProps> = ({
         spinTickets: updatedStoreData.mysteryBoxRewards.filter(r => r.type === 'spin_ticket'),
       });
       
-      // Ensure state is saved and propagated before continuing
-      setStateSyncing(true);
-      await saveGameData(updatedStoreData);
+      // OPTIMIZED: Synchronous state updates (no delays needed with atomic DB function)
+      saveGameData(updatedStoreData);
       onDataChange(updatedStoreData);
-      
-      // Small delay to ensure React state update completes
-      await new Promise(resolve => setTimeout(resolve, 100));
-      setStateSyncing(false);
       
       console.log('[MysteryBox] State sync complete, proceeding to opening phase');
       
-      // Verify spin tickets are in state before proceeding
+      // Verify spin tickets are in state
       const verifySpinTickets = updatedStoreData.mysteryBoxRewards.filter(r => r.type === 'spin_ticket');
       console.log('[MysteryBox] Final state verification:', {
         totalRewards: updatedStoreData.mysteryBoxRewards.length,

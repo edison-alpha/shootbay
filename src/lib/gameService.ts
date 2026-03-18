@@ -147,139 +147,68 @@ export async function updateMysteryBoxWishFlow(
   }
 }
 
-/** Redeem a mystery box by redemption code — optimized to minimize sequential queries */
+/** 
+ * OPTIMIZED: Redeem mystery box using atomic database function
+ * - Single RPC call (no sequential queries)
+ * - Automatic transaction rollback on failure
+ * - Row-level locks prevent race conditions
+ * - Returns complete box data with joined details
+ */
 export async function redeemMysteryBoxByCode(
   userId: string,
   code: string,
-): Promise<{ success: boolean; box?: MysteryBoxWithDetails; remainingTickets?: number; ticketsUsed?: number; error?: string }> {
+): Promise<{ 
+  success: boolean; 
+  box?: MysteryBoxWithDetails; 
+  remainingTickets?: number; 
+  error?: string 
+}> {
   try {
-    const upperCode = code.trim().toUpperCase();
+    const { data, error } = await supabase.rpc('redeem_mystery_box_atomic', {
+      p_user_id: userId,
+      p_redemption_code: code.trim(),
+    });
 
-    // Concurrent: fire both requests in parallel
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    type QR = { data: any; error: any };
-    const [boxResult, profileResult] = await Promise.all([
-      Promise.resolve(supabase.from('mystery_boxes').select('*').eq('redemption_code', upperCode).maybeSingle()) as Promise<QR>,
-      Promise.resolve(supabase.from('profiles').select('*').eq('id', userId).single()) as Promise<QR>,
-    ]);
-
-    if (boxResult.error || !boxResult.data) {
-      return { success: false, error: 'Invalid redemption code' };
+    if (error) {
+      console.error('[redeemMysteryBoxByCode] RPC error:', error);
+      
+      // Handle specific error cases
+      if (error.code === '55P03') {
+        // Lock timeout - another transaction is processing this box
+        return { success: false, error: 'This box is being processed. Please try again.' };
+      }
+      
+      return { success: false, error: 'Database error. Please try again.' };
     }
 
-    const mysteryBox = boxResult.data as MysteryBox;
-
-    // Check if assigned to this user
-    if (mysteryBox.assigned_to !== userId) {
-      return { success: false, error: 'This code is not assigned to you' };
+    if (!data || data.length === 0) {
+      return { success: false, error: 'No response from server' };
     }
 
-    // Check if already opened
-    if (mysteryBox.status === 'opened') {
-      return { success: false, error: 'This mystery box has already been opened' };
-    }
-
-    const profileStats = profileResult.data as { tickets: number; tickets_used: number | null } | null;
-
-    if (profileResult.error || !profileStats) {
-      return { success: false, error: 'Failed to verify your ticket balance' };
-    }
-
-    if (profileStats.tickets <= 0) {
-      return { success: false, error: 'You need at least 1 ticket to open this mystery box' };
-    }
-
-    // Parallel: update ticket + open box
-    const [ticketResult, openResult] = await Promise.all([
-      supabase
-        .from('profiles')
-        .update({
-          tickets: profileStats.tickets - 1,
-          tickets_used: (profileStats.tickets_used || 0) + 1,
-          updated_at: new Date().toISOString(),
-        } as never)
-        .eq('id', userId),
-      supabase
-        .from('mystery_boxes')
-        .update({
-          status: 'opened',
-          opened_at: new Date().toISOString(),
-        } as never)
-        .eq('id', mysteryBox.id)
-        .in('status', ['pending', 'delivered'])
-        .select()
-        .single(),
-    ]);
-
-    if (ticketResult.error) {
-      return { success: false, error: 'Failed to use your ticket' };
-    }
-
-    if (openResult.error) {
-      // Rollback tickets
-      await supabase
-        .from('profiles')
-        .update({
-          tickets: profileStats.tickets,
-          tickets_used: profileStats.tickets_used || 0,
-          updated_at: new Date().toISOString(),
-        } as never)
-        .eq('id', userId);
-
-      return { success: false, error: 'Failed to open mystery box' };
-    }
-
-    // Fetch prize and greeting card details in parallel
-    const result: MysteryBoxWithDetails = openResult.data as MysteryBoxWithDetails;
-
-    const [prizeResult, cardResult] = await Promise.all([
-      mysteryBox.prize_id
-        ? supabase
-            .from('prizes')
-            .select('name, icon, description')
-            .eq('id', mysteryBox.prize_id)
-            .single()
-        : Promise.resolve({ data: null, error: null }),
-      mysteryBox.greeting_card_id
-        ? supabase
-            .from('greeting_cards')
-            .select('title, message, icon, background_color, text_color')
-            .eq('id', mysteryBox.greeting_card_id)
-            .single()
-        : Promise.resolve({ data: null, error: null }),
-    ]);
-
-    if (prizeResult.data) {
-      const p = prizeResult.data as { name: string; icon: string; description: string };
-      result.prize_name = p.name;
-      result.prize_icon = p.icon;
-      result.prize_description = p.description;
-    }
-
-    if (cardResult.data) {
-      const c = cardResult.data as {
-        title: string; message: string; icon: string;
-        background_color: string; text_color: string;
+    const result = data[0];
+    
+    if (!result.success) {
+      return { 
+        success: false, 
+        error: result.error_message || 'Failed to redeem mystery box' 
       };
-      result.card_title = c.title;
-      result.card_message = c.message;
-      result.card_icon = c.icon;
-      result.card_background_color = c.background_color;
-      result.card_text_color = c.text_color;
     }
 
-    // Invalidate user caches after mutation
-    invalidatePrefix(`user:${userId}:`);
+    console.log('[redeemMysteryBoxByCode] Success:', {
+      boxId: result.box_data?.id,
+      includeSpinWheel: result.box_data?.include_spin_wheel,
+      spinCount: result.box_data?.spin_count,
+      remainingTickets: result.remaining_tickets,
+    });
 
-    return {
-      success: true,
-      box: result,
-      remainingTickets: profileStats.tickets - 1,
-      ticketsUsed: (profileStats.tickets_used || 0) + 1,
+    return { 
+      success: true, 
+      box: result.box_data as MysteryBoxWithDetails,
+      remainingTickets: result.remaining_tickets,
     };
   } catch (err) {
-    console.error('Redeem mystery box error:', err);
-    return { success: false, error: 'An unexpected error occurred' };
+    console.error('[redeemMysteryBoxByCode] Exception:', err);
+    return { success: false, error: 'Network error. Please check your connection.' };
   }
 }
 
